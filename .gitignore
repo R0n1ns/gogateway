@@ -15,3 +15,6 @@ configs/local.json
 # Р›РѕРіРё Рё РІСЂРµРјРµРЅРЅС‹Рµ С„Р°Р№Р»С‹
 *.log
 tmp/
+
+# Локальная сборка Windows
+gateforge.exe
