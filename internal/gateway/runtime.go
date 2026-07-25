@@ -167,9 +167,9 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 	_ = json.NewEncoder(w).Encode(v)
 }
 func clone(c *config.Config) *config.Config {
-	b, _ := json.Marshal(c)
-	var out config.Config
-	_ = json.Unmarshal(b, &out)
+	out := *c
+	out.Routes = append([]config.Route(nil), c.Routes...)
+	out.Policies = append([]config.Policy(nil), c.Policies...)
 	return &out
 }
 
