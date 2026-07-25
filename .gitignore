@@ -1,0 +1,17 @@
+# IDE
+.idea/
+.vscode/
+
+# Сборка и отчёты
+bin/
+dist/
+coverage.out
+*.test
+
+# Локальные настройки и секреты
+.env
+configs/local.json
+
+# Логи и временные файлы
+*.log
+tmp/
