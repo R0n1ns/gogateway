@@ -40,6 +40,6 @@ services:
       timeout: 3s
       retries: 20
     volumes:
-      - gateforge-postgres:/var/lib/postgresql/data
+      - gateforge-postgres:/var/lib/postgresql
 volumes:
   gateforge-postgres:
