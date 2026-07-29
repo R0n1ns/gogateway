@@ -28,9 +28,16 @@ import (
 
 func Run(args []string, stdout, stderr io.Writer) int {
 	command := "run"
-	if len(args) > 0 && args[0][0] != '-' {
-		command = args[0]
-		args = args[1:]
+	if len(args) > 0 {
+		switch args[0] {
+		case "help", "-h", "--help":
+			printHelp(stdout)
+			return 0
+		}
+		if args[0][0] != '-' {
+			command = args[0]
+			args = args[1:]
+		}
 	}
 	switch command {
 	case "run":
