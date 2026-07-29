@@ -26,10 +26,13 @@ go test -race ./...
 ## Покрытие
 
 ```powershell
-go test -coverprofile=coverage.out ./...
+go test -coverprofile=coverage.out ./internal/...
+go run ./tools/coveragecheck -profile coverage.out -min 80
 go tool cover -func=coverage.out
 go tool cover -html=coverage.out
 ```
+
+Совокупное покрытие unit-тестами пакетов `internal/*` не должно опускаться ниже 80%. Инструмент `tools/coveragecheck` проверяет профиль по числу операторов и возвращает ненулевой код завершения при нарушении порога; эта же проверка выполняется в CI и в цели `make cover`.
 
 Цель — покрывать риски, а не процент ради процента: validation errors, deny/auth branches, retries, circuit transitions, revision conflict, secret handling и конкурентный доступ важнее trivial getters.
 
@@ -75,4 +78,4 @@ go run ./cmd/gateforge test -config configs/gateforge.json -cases configs/policy
 
 ## CI
 
-`ci.yml` запускает format, vet, race+coverage, PostgreSQL integration, policy cases, fuzz smoke, build, golangci-lint и govulncheck. Отдельные workflows выполняют CodeQL и проверку container/SBOM.
+`ci.yml` запускает format, vet, unit-тесты с race detector и порогом покрытия 80%, сквозные и PostgreSQL integration tests, policy cases, fuzz smoke, build, golangci-lint и govulncheck. Отдельные workflows выполняют CodeQL и проверку container/SBOM.

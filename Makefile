@@ -14,7 +14,8 @@ integration:
 >go test -count=1 -run Integration ./internal/storage
 
 cover:
->go test -coverprofile=coverage.out ./...
+>go test -coverprofile=coverage.out ./internal/...
+>go run ./tools/coveragecheck -profile coverage.out -min 80
 >go tool cover -func=coverage.out
 
 run:

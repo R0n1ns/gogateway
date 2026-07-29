@@ -38,8 +38,12 @@ jobs:
         run: test -z "$(gofmt -l .)"
       - name: Выполнить статический анализ
         run: go vet ./...
-      - name: Запустить тесты с race detector
-        run: go test -race -coverprofile=coverage.out -covermode=atomic ./...
+      - name: Запустить unit-тесты с race detector
+        run: go test -race -coverprofile=coverage.out -covermode=atomic ./internal/...
+      - name: Проверить покрытие unit-тестами
+        run: go run ./tools/coveragecheck -profile coverage.out -min 80
+      - name: Запустить сквозные тесты и тесты инструментов
+        run: go test -race ./tests/... ./tools/...
       - name: Проверить конфигурацию и политики
         run: |
           go run ./cmd/gateforge validate -config configs/gateforge.json
