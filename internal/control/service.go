@@ -31,17 +31,19 @@ func (s *Service) Audit(ctx context.Context, limit int) ([]storage.AuditEvent, e
 	return s.repository.Audit(ctx, limit)
 }
 func (s *Service) Apply(ctx context.Context, input *config.Config, expected int64, actor, comment string) (storage.Snapshot, error) {
-	cfg := input.DeepCopy()
-	cfg.Defaults()
-	cfg.ExpandEnvironment()
-	cfg.Normalize()
-	if err := cfg.Validate(); err != nil {
+	raw := input.DeepCopy()
+	raw.Defaults()
+	raw.Normalize()
+	resolved := raw.DeepCopy()
+	resolved.ExpandEnvironment()
+	resolved.Normalize()
+	if err := resolved.Validate(); err != nil {
 		return storage.Snapshot{}, err
 	}
-	if _, err := policy.Compile(cfg.Policies); err != nil {
+	if _, err := policy.Compile(resolved.Policies); err != nil {
 		return storage.Snapshot{}, err
 	}
-	snapshot, err := s.repository.Save(ctx, cfg, expected, actor, comment)
+	snapshot, err := s.repository.Save(ctx, raw, expected, actor, comment)
 	if err != nil {
 		return storage.Snapshot{}, err
 	}

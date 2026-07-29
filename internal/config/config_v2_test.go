@@ -49,3 +49,19 @@ func validV2Config() *Config {
 	cfg.Normalize()
 	return cfg
 }
+
+func TestDecodeKeepsSecretReferenceRaw(t *testing.T) {
+	t.Setenv("GATEFORGE_RAW_SECRET", "resolved-secret")
+	cfg, err := Decode([]byte(`{"version":1,"public":{"address":":8080"},"admin":{"address":":9090","api_key":"${GATEFORGE_RAW_SECRET}"},"storage":{"driver":"memory"},"routes":[],"policies":[],"access_log":{}}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Admin.APIKey != "${GATEFORGE_RAW_SECRET}" {
+		t.Fatalf("secret сохранён раскрытым: %q", cfg.Admin.APIKey)
+	}
+	resolved := cfg.DeepCopy()
+	resolved.ExpandEnvironment()
+	if resolved.Admin.APIKey != "resolved-secret" {
+		t.Fatalf("secret не раскрыт runtime: %q", resolved.Admin.APIKey)
+	}
+}

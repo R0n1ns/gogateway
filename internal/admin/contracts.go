@@ -18,6 +18,7 @@ type DataPlane interface {
 
 // ControlPlane скрывает конкретное memory/PostgreSQL хранилище от HTTP handler.
 type ControlPlane interface {
+	Current(context.Context) (storage.Snapshot, error)
 	Get(context.Context, int64) (storage.Snapshot, error)
 	List(context.Context, int) ([]storage.Snapshot, error)
 	Apply(context.Context, *config.Config, int64, string, string) (storage.Snapshot, error)

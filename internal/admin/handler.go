@@ -2,6 +2,7 @@
 package admin
 
 import (
+	"context"
 	"crypto/subtle"
 	"embed"
 	"encoding/json"
@@ -70,8 +71,12 @@ func (h *Handler) ready(w http.ResponseWriter, _ *http.Request) {
 	}
 	write(w, 200, map[string]string{"status": "ready"})
 }
-func (h *Handler) getConfig(w http.ResponseWriter, _ *http.Request) {
-	cfg := h.runtime.Config()
+func (h *Handler) getConfig(w http.ResponseWriter, r *http.Request) {
+	cfg, err := h.currentConfig(r.Context())
+	if err != nil {
+		handleError(w, err)
+		return
+	}
 	w.Header().Set("ETag", strconv.FormatInt(cfg.Revision, 10))
 	write(w, 200, cfg)
 }
@@ -98,7 +103,11 @@ func (h *Handler) addPolicy(w http.ResponseWriter, r *http.Request) {
 		adminError(w, 400, "invalid_json", err.Error())
 		return
 	}
-	cfg := h.runtime.Config()
+	cfg, loadErr := h.currentConfig(r.Context())
+	if loadErr != nil {
+		handleError(w, loadErr)
+		return
+	}
 	for _, current := range cfg.Policies {
 		if current.ID == policy.ID {
 			adminError(w, 409, "already_exists", "policy уже существует")
@@ -114,7 +123,11 @@ func (h *Handler) addPolicy(w http.ResponseWriter, r *http.Request) {
 	write(w, 201, snapshot)
 }
 func (h *Handler) deletePolicy(w http.ResponseWriter, r *http.Request) {
-	cfg := h.runtime.Config()
+	cfg, loadErr := h.currentConfig(r.Context())
+	if loadErr != nil {
+		handleError(w, loadErr)
+		return
+	}
 	out := cfg.Policies[:0]
 	found := false
 	for _, item := range cfg.Policies {
@@ -144,7 +157,11 @@ func (h *Handler) addRoute(w http.ResponseWriter, r *http.Request) {
 		adminError(w, 400, "invalid_json", err.Error())
 		return
 	}
-	cfg := h.runtime.Config()
+	cfg, loadErr := h.currentConfig(r.Context())
+	if loadErr != nil {
+		handleError(w, loadErr)
+		return
+	}
 	for _, current := range cfg.Routes {
 		if current.ID == route.ID {
 			adminError(w, 409, "already_exists", "route уже существует")
@@ -160,7 +177,11 @@ func (h *Handler) addRoute(w http.ResponseWriter, r *http.Request) {
 	write(w, 201, snapshot)
 }
 func (h *Handler) deleteRoute(w http.ResponseWriter, r *http.Request) {
-	cfg := h.runtime.Config()
+	cfg, loadErr := h.currentConfig(r.Context())
+	if loadErr != nil {
+		handleError(w, loadErr)
+		return
+	}
 	out := cfg.Routes[:0]
 	found := false
 	for _, item := range cfg.Routes {
@@ -241,6 +262,14 @@ func (h *Handler) ui(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	_, _ = w.Write(data)
 }
+func (h *Handler) currentConfig(ctx context.Context) (*config.Config, error) {
+	snapshot, err := h.control.Current(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return snapshot.Config, nil
+}
+
 func decode(w http.ResponseWriter, r *http.Request, target any, maxBytes int64) error {
 	return json.NewDecoder(http.MaxBytesReader(w, r.Body, maxBytes)).Decode(target)
 }

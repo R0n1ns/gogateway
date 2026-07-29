@@ -241,8 +241,9 @@ func runGateway(args []string, out, errOut io.Writer) int {
 	service := control.New(runtime, repository)
 	defer service.Close()
 	defer runtime.Close()
-	public := newServer(cfg.Public, runtime)
-	controlServer := newServer(cfg.Admin.Server, admin.NewWithControl(runtime, service, cfg.Admin.APIKey))
+	activeConfig := runtime.Config()
+	public := newServer(activeConfig.Public, runtime)
+	controlServer := newServer(activeConfig.Admin.Server, admin.NewWithControl(runtime, service, activeConfig.Admin.APIKey))
 	errs := make(chan error, 2)
 	go func() { logger.Info("public server started", "address", public.Addr); errs <- public.ListenAndServe() }()
 	go func() {
@@ -258,7 +259,7 @@ func runGateway(args []string, out, errOut io.Writer) int {
 			logger.Error("server stopped", "error", serveErr)
 		}
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), cfg.Runtime.ShutdownTimeout.Duration)
+	ctx, cancel := context.WithTimeout(context.Background(), activeConfig.Runtime.ShutdownTimeout.Duration)
 	defer cancel()
 	_ = public.Shutdown(ctx)
 	_ = controlServer.Shutdown(ctx)

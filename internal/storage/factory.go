@@ -12,7 +12,9 @@ func Open(ctx context.Context, cfg *config.Config) (Repository, error) {
 	var err error
 	switch cfg.Storage.Driver {
 	case "postgres":
-		repository, err = NewPostgres(ctx, cfg.Storage)
+		resolved := cfg.DeepCopy()
+		resolved.ExpandEnvironment()
+		repository, err = NewPostgres(ctx, resolved.Storage)
 	default:
 		repository = NewMemory(cfg)
 	}

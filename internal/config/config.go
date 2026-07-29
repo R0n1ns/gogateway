@@ -47,9 +47,11 @@ func Decode(data []byte) (*Config, error) {
 		return nil, err
 	}
 	cfg.Defaults()
-	cfg.ExpandEnvironment()
 	cfg.Normalize()
-	if err := cfg.Validate(); err != nil {
+	resolved := cfg.DeepCopy()
+	resolved.ExpandEnvironment()
+	resolved.Normalize()
+	if err := resolved.Validate(); err != nil {
 		return nil, err
 	}
 	return &cfg, nil
