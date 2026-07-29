@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/R0n1ns/gogateway/configs/gateforge.schema.json",
+  "title": "GateForge configuration",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "public", "admin", "routes", "policies"],
+  "properties": {
+    "$schema": {"type": "string"},
+    "version": {"type": "integer", "minimum": 1},
+    "revision": {"type": "integer", "minimum": 0},
+    "public": {"$ref": "#/$defs/server"},
+    "admin": {"$ref": "#/$defs/adminServer"},
+    "runtime": {"$ref": "#/$defs/runtime"},
+    "storage": {"$ref": "#/$defs/storage"},
+    "observability": {"$ref": "#/$defs/observability"},
+    "access_log": {"$ref": "#/$defs/accessLog"},
+    "routes": {"type": "array", "items": {"$ref": "#/$defs/route"}},
+    "policies": {"type": "array", "items": {"$ref": "#/$defs/policy"}}
+  },
+  "$defs": {
+    "duration": {"type": "string", "pattern": "^[0-9]+(ns|us|µs|ms|s|m|h)$"},
+    "server": {
+      "type": "object", "additionalProperties": false, "required": ["address"],
+      "properties": {"address":{"type":"string","minLength":1},"read_timeout":{"$ref":"#/$defs/duration"},"write_timeout":{"$ref":"#/$defs/duration"},"idle_timeout":{"$ref":"#/$defs/duration"}}
+    },
+    "adminServer": {
+      "type": "object", "additionalProperties": false, "required": ["address"],
+      "properties": {"address":{"type":"string","minLength":1},"read_timeout":{"$ref":"#/$defs/duration"},"write_timeout":{"$ref":"#/$defs/duration"},"idle_timeout":{"$ref":"#/$defs/duration"},"api_key":{"type":"string"}}
+    },
+    "runtime": {"type":"object","additionalProperties":false,"properties":{"shutdown_timeout":{"$ref":"#/$defs/duration"},"trusted_proxies":{"type":"array","items":{"type":"string"}},"max_config_bytes":{"type":"integer","minimum":1024}}},
+    "storage": {"type":"object","additionalProperties":false,"properties":{"driver":{"enum":["memory","postgres"]},"dsn":{"type":"string"},"max_open_conns":{"type":"integer","minimum":1},"max_idle_conns":{"type":"integer","minimum":0}}},
+    "observability": {"type":"object","additionalProperties":false,"properties":{"service_name":{"type":"string"},"tracing_enabled":{"type":"boolean"},"sample_rate":{"type":"number","minimum":0,"maximum":1}}},
+    "accessLog": {"type":"object","additionalProperties":false,"properties":{"enabled":{"type":"boolean"},"format":{"enum":["json"]}}},
+    "upstream": {"type":"object","additionalProperties":false,"required":["url"],"properties":{"id":{"type":"string"},"url":{"type":"string","format":"uri"},"weight":{"type":"integer","minimum":1}}},
+    "balance": {"type":"object","additionalProperties":false,"properties":{"strategy":{"enum":["round_robin","weighted_round_robin","least_connections","random","consistent_hash"]},"hash_key":{"type":"string"}}},
+    "healthCheck": {"type":"object","additionalProperties":false,"properties":{"enabled":{"type":"boolean"},"path":{"type":"string"},"interval":{"$ref":"#/$defs/duration"},"timeout":{"$ref":"#/$defs/duration"},"healthy_threshold":{"type":"integer","minimum":1},"unhealthy_threshold":{"type":"integer","minimum":1}}},
+    "retry": {"type":"object","additionalProperties":false,"properties":{"attempts":{"type":"integer","minimum":1,"maximum":10},"backoff":{"$ref":"#/$defs/duration"},"statuses":{"type":"array","items":{"type":"integer","minimum":400,"maximum":599}},"methods":{"type":"array","items":{"type":"string"}}}},
+    "circuit": {"type":"object","additionalProperties":false,"properties":{"failure_threshold":{"type":"integer","minimum":0},"open_timeout":{"$ref":"#/$defs/duration"},"half_open_requests":{"type":"integer","minimum":1}}},
+    "route": {
+      "type":"object","additionalProperties":false,"required":["id","path_prefix"],
+      "properties":{"id":{"type":"string","minLength":1},"host":{"type":"string"},"path_prefix":{"type":"string","pattern":"^/"},"upstreams":{"type":"array","items":{"type":"string","format":"uri"}},"upstream_pool":{"type":"array","minItems":1,"items":{"$ref":"#/$defs/upstream"}},"balance":{"$ref":"#/$defs/balance"},"health_check":{"$ref":"#/$defs/healthCheck"},"retry":{"$ref":"#/$defs/retry"},"circuit_breaker":{"$ref":"#/$defs/circuit"},"max_body_bytes":{"type":"integer","minimum":0},"max_concurrent":{"type":"integer","minimum":0},"strip_prefix":{"type":"boolean"},"add_headers":{"type":"object","additionalProperties":{"type":"string"}},"remove_headers":{"type":"array","items":{"type":"string"}},"add_response_headers":{"type":"object","additionalProperties":{"type":"string"}},"upstream_timeout":{"$ref":"#/$defs/duration"}}
+    },
+    "stringMatch": {"type":"object","additionalProperties":false,"properties":{"exact":{"type":"string"},"prefix":{"type":"string"},"suffix":{"type":"string"},"regex":{"type":"string"},"absent":{"type":"boolean"}},"minProperties":1,"maxProperties":1},
+    "namedMatch": {"type":"object","additionalProperties":false,"required":["name","match"],"properties":{"name":{"type":"string"},"match":{"$ref":"#/$defs/stringMatch"}}},
+    "match": {"type":"object","additionalProperties":false,"properties":{"methods":{"type":"array","items":{"type":"string"}},"path_prefix":{"type":"string"},"path":{"$ref":"#/$defs/stringMatch"},"source_cidrs":{"type":"array","items":{"type":"string"}},"headers":{"type":"object","additionalProperties":{"type":"string"}},"header_matches":{"type":"array","items":{"$ref":"#/$defs/namedMatch"}},"query":{"type":"object","additionalProperties":{"type":"string"}},"query_matches":{"type":"array","items":{"$ref":"#/$defs/namedMatch"}},"min_body_bytes":{"type":"integer","minimum":0},"max_body_bytes":{"type":"integer","minimum":0},"route_ids":{"type":"array","items":{"type":"string"}},"all":{"type":"array","items":{"$ref":"#/$defs/match"}},"any":{"type":"array","items":{"$ref":"#/$defs/match"}},"not":{"$ref":"#/$defs/match"}}},
+    "limit": {"type":"object","additionalProperties":false,"required":["requests","window","key"],"properties":{"algorithm":{"enum":["token_bucket"]},"requests":{"type":"integer","minimum":1},"window":{"$ref":"#/$defs/duration"},"burst":{"type":"integer","minimum":0},"key":{"type":"string"},"max_concurrent":{"type":"integer","minimum":0},"idle_ttl":{"$ref":"#/$defs/duration"}}},
+    "rewrite": {"type":"object","additionalProperties":false,"properties":{"path_prefix":{"type":"string"},"set_headers":{"type":"object","additionalProperties":{"type":"string"}}}},
+    "redirect": {"type":"object","additionalProperties":false,"required":["url"],"properties":{"url":{"type":"string"},"status":{"enum":[301,302,307,308]}}},
+    "auth": {"type":"object","additionalProperties":false,"required":["type"],"properties":{"type":{"enum":["api_key","basic","jwt_hs256"]},"header":{"type":"string"},"value":{"type":"string"},"username":{"type":"string"},"password":{"type":"string"},"jwt_secret":{"type":"string"},"jwt_issuer":{"type":"string"},"jwt_audience":{"type":"string"}}},
+    "policy": {"type":"object","additionalProperties":false,"required":["id","priority","action","match"],"properties":{"id":{"type":"string","minLength":1},"priority":{"type":"integer"},"mode":{"enum":["block","shadow"]},"action":{"enum":["allow","deny","rate_limit","rewrite","redirect","authenticate"]},"match":{"$ref":"#/$defs/match"},"limit":{"$ref":"#/$defs/limit"},"rewrite":{"$ref":"#/$defs/rewrite"},"redirect":{"$ref":"#/$defs/redirect"},"auth":{"$ref":"#/$defs/auth"}}}
+  }
+}

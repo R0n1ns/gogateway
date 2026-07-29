@@ -18,8 +18,8 @@ func (d *Duration) UnmarshalJSON(data []byte) error {
 	if err != nil {
 		return err
 	}
-	if parsed <= 0 {
-		return errors.New("длительность должна быть больше нуля")
+	if parsed < 0 {
+		return errors.New("длительность не может быть отрицательной")
 	}
 	d.Duration = parsed
 	return nil

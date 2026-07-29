@@ -1,1 +1,24 @@
-{"version":1,"public":{"address":":8080","read_timeout":"10s","write_timeout":"30s","idle_timeout":"60s"},"admin":{"address":"127.0.0.1:9090","read_timeout":"5s","write_timeout":"10s","idle_timeout":"30s","api_key":""},"runtime":{"shutdown_timeout":"10s"},"storage":{"driver":"memory"},"access_log":{"enabled":true,"format":"json"},"routes":[{"id":"api","host":"","path_prefix":"/api","upstreams":["http://127.0.0.1:8081"],"max_body_bytes":1048576,"upstream_timeout":"15s","add_headers":{"X-Gateway":"GateForge"},"remove_headers":["X-Internal-Secret"]}],"policies":[{"id":"deny-admin","priority":10,"mode":"block","action":"deny","match":{"path_prefix":"/admin"}},{"id":"api-limit","priority":20,"mode":"block","action":"rate_limit","match":{"route_ids":["api"]},"limit":{"requests":100,"window":"1m","burst":20,"key":"ip"}}]}
+{
+  "version": 1,
+  "revision": 1,
+  "public": {"address": ":8080", "read_timeout": "10s", "write_timeout": "30s", "idle_timeout": "60s"},
+  "admin": {"address": "127.0.0.1:9090", "read_timeout": "5s", "write_timeout": "10s", "idle_timeout": "30s", "api_key": ""},
+  "runtime": {"shutdown_timeout": "10s", "trusted_proxies": ["127.0.0.0/8"], "max_config_bytes": 1048576},
+  "storage": {"driver": "memory", "max_open_conns": 10, "max_idle_conns": 5},
+  "observability": {"service_name": "gateforge", "tracing_enabled": true, "sample_rate": 1},
+  "access_log": {"enabled": true, "format": "json"},
+  "routes": [{
+    "id": "api", "host": "", "path_prefix": "/api",
+    "upstream_pool": [{"id": "backend-v1", "url": "http://127.0.0.1:8081", "weight": 90}, {"id": "backend-v2", "url": "http://127.0.0.1:8082", "weight": 10}],
+    "balance": {"strategy": "weighted_round_robin"},
+    "health_check": {"enabled": false},
+    "retry": {"attempts": 2, "backoff": "50ms", "statuses": [502, 503, 504], "methods": ["GET", "HEAD"]},
+    "circuit_breaker": {"failure_threshold": 5, "open_timeout": "30s", "half_open_requests": 1},
+    "max_body_bytes": 1048576, "max_concurrent": 100, "strip_prefix": false, "upstream_timeout": "15s",
+    "add_headers": {"X-Gateway": "GateForge"}, "remove_headers": ["X-Internal-Secret"], "add_response_headers": {"X-Served-By": "GateForge"}
+  }],
+  "policies": [
+    {"id": "deny-admin", "priority": 10, "mode": "block", "action": "deny", "match": {"path_prefix": "/admin"}},
+    {"id": "api-limit", "priority": 20, "mode": "block", "action": "rate_limit", "match": {"route_ids": ["api"]}, "limit": {"algorithm": "token_bucket", "requests": 100, "window": "1m", "burst": 20, "key": "ip", "max_concurrent": 10, "idle_ttl": "10m"}}
+  ]
+}

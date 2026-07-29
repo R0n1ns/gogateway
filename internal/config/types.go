@@ -2,6 +2,7 @@ package config
 
 // Config — единый документ конфигурации GateForge.
 type Config struct {
+	Schema        string        `json:"$schema,omitempty"`
 	Version       int           `json:"version"`
 	Revision      int64         `json:"revision,omitempty"`
 	Public        Server        `json:"public"`
