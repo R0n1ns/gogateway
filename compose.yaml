@@ -1,0 +1,45 @@
+services:
+  gateforge:
+    build:
+      context: .
+      target: gateforge
+    ports:
+      - "8080:8080"
+      - "127.0.0.1:9090:9090"
+    environment:
+      GATEFORGE_ADMIN_API_KEY: local-admin-key
+      GATEFORGE_DATABASE_DSN: postgres://gateforge:gateforge@postgres:5432/gateforge?sslmode=disable
+    volumes:
+      - ./configs/docker.json:/configs/gateforge.json:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      backend-v1:
+        condition: service_started
+      backend-v2:
+        condition: service_started
+  backend-v1:
+    build:
+      context: .
+      target: demo-backend
+    environment: {NAME: backend-v1, ADDRESS: ":8080"}
+  backend-v2:
+    build:
+      context: .
+      target: demo-backend
+    environment: {NAME: backend-v2, ADDRESS: ":8080"}
+  postgres:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_USER: gateforge
+      POSTGRES_PASSWORD: gateforge
+      POSTGRES_DB: gateforge
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U gateforge -d gateforge"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+    volumes:
+      - gateforge-postgres:/var/lib/postgresql/data
+volumes:
+  gateforge-postgres:

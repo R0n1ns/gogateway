@@ -1,0 +1,7 @@
+.git
+.idea
+.vscode
+bin
+coverage.out
+*.log
+configs/local.json
