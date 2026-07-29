@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"regexp"
 )
@@ -23,8 +24,7 @@ const (
 
 var environmentPattern = regexp.MustCompile(`\$\{([A-Za-z_][A-Za-z0-9_]*)\}`)
 
-// Load читает JSON, подставляет переменные окружения и полностью проверяет
-// конфигурацию до её передачи runtime.
+// Load читает JSON и полностью проверяет конфигурацию до её передачи runtime.
 func Load(path string) (*Config, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -38,12 +38,18 @@ func Load(path string) (*Config, error) {
 }
 
 // Decode разбирает ровно один JSON-документ. Неизвестные поля запрещены, чтобы
-// опечатка не превращалась в тихо проигнорированную настройку безопасности.
+// опечатка не превратилась в проигнорированную настройку безопасности.
 func Decode(data []byte) (*Config, error) {
 	var cfg Config
 	decoder := json.NewDecoder(bytes.NewReader(data))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&cfg); err != nil {
+		return nil, err
+	}
+	if err := decoder.Decode(&struct{}{}); err != io.EOF {
+		if err == nil {
+			return nil, fmt.Errorf("конфигурация должна содержать один JSON-документ")
+		}
 		return nil, err
 	}
 	cfg.Defaults()
