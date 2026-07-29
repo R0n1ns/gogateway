@@ -110,8 +110,10 @@ func (c *Config) Normalize() {
 		if route.PathPrefix == "" {
 			route.PathPrefix = "/"
 		}
-		for j, raw := range route.Upstreams {
-			route.UpstreamPool = append(route.UpstreamPool, Upstream{ID: route.ID + "-" + itoa(j+1), URL: raw, Weight: 1})
+		if len(route.UpstreamPool) == 0 {
+			for j, raw := range route.Upstreams {
+				route.UpstreamPool = append(route.UpstreamPool, Upstream{ID: route.ID + "-" + itoa(j+1), URL: raw, Weight: 1})
+			}
 		}
 		for j := range route.UpstreamPool {
 			if route.UpstreamPool[j].ID == "" {

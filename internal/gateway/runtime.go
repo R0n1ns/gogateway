@@ -1,203 +1,324 @@
-// Package gateway соединяет маршрутизацию, политики и reverse proxy.
+// Package gateway реализует data plane GateForge.
 package gateway
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
-	"encoding/json"
+	"io"
+	"log/slog"
+	"net/http"
+	"slices"
+	"strconv"
+	"strings"
+	"sync/atomic"
+	"time"
+
 	"github.com/R0n1ns/gogateway/internal/config"
 	"github.com/R0n1ns/gogateway/internal/policy"
 	"github.com/R0n1ns/gogateway/internal/ratelimit"
 	"github.com/R0n1ns/gogateway/internal/router"
-	"log/slog"
-	"net"
-	"net/http"
-	"net/http/httputil"
-	"net/url"
-	"strconv"
-	"strings"
-	"sync"
-	"sync/atomic"
-	"time"
+	"github.com/R0n1ns/gogateway/internal/upstream"
 )
 
 type state struct {
-	cfg    *config.Config
-	router *router.Router
-	engine *policy.Engine
-}
-type Runtime struct {
-	current atomic.Pointer[state]
-	limiter *ratelimit.Limiter
-	logger  *slog.Logger
-	metrics *Metrics
-	rr      atomic.Uint64
+	cfg         *config.Config
+	router      *router.Router
+	engine      *policy.Engine
+	pools       map[string]*upstream.Pool
+	concurrency map[string]chan struct{}
+	trusted     *TrustedProxies
 }
 
-func New(c *config.Config, l *slog.Logger) (*Runtime, error) {
-	g := &Runtime{limiter: ratelimit.New(), logger: l, metrics: NewMetrics()}
-	if err := g.Update(c); err != nil {
+func (s *state) close() {
+	for _, pool := range s.pools {
+		pool.Close()
+	}
+}
+
+// Runtime атомарно переключает immutable snapshots и обслуживает public traffic.
+type Runtime struct {
+	current       atomic.Pointer[state]
+	limiter       *ratelimit.Limiter
+	logger        *slog.Logger
+	metrics       *Metrics
+	tracer        Tracer
+	janitorCancel context.CancelFunc
+}
+
+func New(cfg *config.Config, logger *slog.Logger) (*Runtime, error) {
+	return NewWithTracer(cfg, logger, NewW3CTracer())
+}
+func NewWithTracer(cfg *config.Config, logger *slog.Logger, tracer Tracer) (*Runtime, error) {
+	if logger == nil {
+		logger = slog.Default()
+	}
+	if tracer == nil {
+		tracer = NoopTracer{}
+	}
+	runtime := &Runtime{limiter: ratelimit.New(), logger: logger, metrics: NewMetrics(), tracer: tracer}
+	ctx, cancel := context.WithCancel(context.Background())
+	runtime.janitorCancel = cancel
+	runtime.limiter.StartJanitor(ctx, time.Minute, 10*time.Minute)
+	if err := runtime.Update(cfg); err != nil {
+		cancel()
 		return nil, err
 	}
-	return g, nil
+	return runtime, nil
 }
-func (g *Runtime) Config() *config.Config { return clone(g.current.Load().cfg) }
-func (g *Runtime) Update(c *config.Config) error {
-	copy := clone(c)
-	copy.Defaults()
-	if err := copy.Validate(); err != nil {
+
+func (g *Runtime) Close() {
+	if g.janitorCancel != nil {
+		g.janitorCancel()
+	}
+	if current := g.current.Load(); current != nil {
+		current.close()
+	}
+}
+func (g *Runtime) Config() *config.Config { return g.current.Load().cfg.DeepCopy() }
+func (g *Runtime) Metrics() http.Handler  { return g.metrics }
+func (g *Runtime) UpstreamStatus() map[string][]upstream.Status {
+	current := g.current.Load()
+	out := make(map[string][]upstream.Status, len(current.pools))
+	for id, pool := range current.pools {
+		out[id] = pool.Status()
+	}
+	return out
+}
+func (g *Runtime) Simulate(r *http.Request, routeID, sourceIP string) policy.Decision {
+	return g.current.Load().engine.Evaluate(r, routeID, sourceIP)
+}
+
+// Update сначала полностью компилирует новый snapshot и только затем публикует его.
+func (g *Runtime) Update(input *config.Config) error {
+	cfg := input.DeepCopy()
+	cfg.Defaults()
+	cfg.ExpandEnvironment()
+	cfg.Normalize()
+	if err := cfg.Validate(); err != nil {
 		return err
 	}
-	copy.Normalize()
-	g.current.Store(&state{cfg: copy, router: router.New(copy.Routes), engine: policy.New(copy.Policies)})
+	engine, err := policy.Compile(cfg.Policies)
+	if err != nil {
+		return err
+	}
+	next := &state{cfg: cfg, router: router.New(cfg.Routes), engine: engine, pools: map[string]*upstream.Pool{}, concurrency: map[string]chan struct{}{}}
+	next.trusted, err = NewTrustedProxies(cfg.Runtime.TrustedProxies)
+	if err != nil {
+		return err
+	}
+	for _, route := range cfg.Routes {
+		pool, poolErr := upstream.New(route)
+		if poolErr != nil {
+			next.close()
+			return poolErr
+		}
+		next.pools[route.ID] = pool
+		if route.MaxConcurrent > 0 {
+			next.concurrency[route.ID] = make(chan struct{}, route.MaxConcurrent)
+		}
+	}
+	previous := g.current.Swap(next)
 	g.limiter.Reset()
+	g.metrics.SetConfigRevision(cfg.Revision)
+	if previous != nil {
+		previous.close()
+	}
 	return nil
 }
-func (g *Runtime) Metrics() http.Handler { return g.metrics }
+
 func (g *Runtime) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	start := time.Now()
-	id := requestID()
-	w.Header().Set("X-Request-ID", id)
-	rw := &recorder{ResponseWriter: w, status: 200}
-	routeID := ""
-	decision := "allow"
+	started := time.Now()
+	r, span := g.tracer.Start(r)
+	defer span.End(nil)
+	requestID := requestID()
+	w.Header().Set("X-Request-ID", requestID)
+	if span.TraceID() != "" {
+		w.Header().Set("Traceparent", span.TraceParent())
+	}
+	recorder := &responseRecorder{ResponseWriter: w, status: http.StatusOK}
+	routeID, decisionName := "", "allow"
+	g.metrics.InFlight(1)
 	defer func() {
-		g.metrics.Observe(routeID, decision, rw.status)
-		if g.current.Load().cfg.AccessLog.Enabled {
-			g.logger.Info("access", "request_id", id, "method", r.Method, "path", r.URL.Path, "route", routeID, "decision", decision, "status", rw.status, "duration_ms", time.Since(start).Milliseconds(), "source_ip", clientIP(r))
+		g.metrics.InFlight(-1)
+		g.metrics.ObserveRequest(routeID, decisionName, recorder.status, time.Since(started))
+		cfg := g.current.Load().cfg
+		if cfg.AccessLog.Enabled {
+			g.logger.Info("access", "request_id", requestID, "trace_id", span.TraceID(), "method", r.Method, "path", r.URL.Path, "route", routeID, "decision", decisionName, "status", recorder.status, "duration_ms", time.Since(started).Milliseconds(), "source_ip", ClientIP(r, g.current.Load().trusted))
 		}
 	}()
-	s := g.current.Load()
-	route, ok := s.router.Match(r)
+	snapshot := g.current.Load()
+	route, ok := snapshot.router.Match(r)
 	if !ok {
-		decision = "route_not_found"
-		writeJSON(rw, 404, map[string]string{"error": "route not found", "request_id": id})
+		decisionName = "route_not_found"
+		WriteError(recorder, NewError("route_not_found", http.StatusNotFound, "маршрут не найден", requestID))
 		return
 	}
 	routeID = route.ID
 	if route.MaxBodyBytes > 0 {
 		if r.ContentLength > route.MaxBodyBytes {
-			decision = "body_too_large"
-			writeJSON(rw, 413, map[string]string{"error": "request body too large", "request_id": id})
+			decisionName = "body_too_large"
+			WriteError(recorder, NewError("body_too_large", http.StatusRequestEntityTooLarge, "тело запроса превышает лимит", requestID))
 			return
 		}
-		r.Body = http.MaxBytesReader(rw, r.Body, route.MaxBodyBytes)
+		r.Body = http.MaxBytesReader(recorder, r.Body, route.MaxBodyBytes)
 	}
-	d := s.engine.Evaluate(r, route.ID, clientIP(r))
-	for _, v := range d.Shadow {
-		g.logger.Warn("shadow policy matched", "request_id", id, "policy_id", v)
-		g.metrics.Shadow(v)
+	clientIP := ClientIP(r, snapshot.trusted)
+	decision := snapshot.engine.Evaluate(r, route.ID, clientIP)
+	for _, id := range decision.Shadow {
+		g.logger.Warn("shadow policy matched", "request_id", requestID, "policy_id", id)
+		g.metrics.ObservePolicy(id, "shadow")
 	}
-	if !d.Allowed {
-		decision = "deny"
-		writeJSON(rw, 403, map[string]string{"error": "request denied", "policy_id": d.PolicyID, "request_id": id})
+	if !decision.Allowed {
+		decisionName = decision.Action
+		if decision.Status == http.StatusUnauthorized {
+			recorder.Header().Set("WWW-Authenticate", "Bearer")
+		}
+		WriteError(recorder, NewPolicyError(decision, requestID))
 		return
 	}
-	if d.Limit != nil {
-		key := limitKey(r, d.Limit)
-		if !g.limiter.Allow(d.PolicyID+":"+key, d.Limit.Requests, d.Limit.Burst, d.Limit.Window.Duration) {
-			decision = "rate_limit"
-			rw.Header().Set("Retry-After", strconv.Itoa(int(d.Limit.Window.Seconds())))
-			writeJSON(rw, 429, map[string]string{"error": "rate limit exceeded", "policy_id": d.PolicyID, "request_id": id})
+	if decision.Redirect != nil {
+		decisionName = "redirect"
+		http.Redirect(recorder, r, decision.Redirect.URL, decision.Redirect.Status)
+		return
+	}
+	applyRewrite(r, decision.Rewrite)
+	if decision.Limit != nil {
+		key := rateKey(r, decision.Limit, clientIP, decision.Subject)
+		result := g.limiter.Acquire(decision.PolicyID+":"+key, *decision.Limit)
+		setRateHeaders(recorder.Header(), result)
+		if !result.Allowed {
+			decisionName = "rate_limit"
+			WriteError(recorder, NewError("rate_limit_exceeded", http.StatusTooManyRequests, "превышен лимит запросов", requestID))
+			return
+		}
+		defer result.Release()
+	}
+	if semaphore := snapshot.concurrency[route.ID]; semaphore != nil {
+		select {
+		case semaphore <- struct{}{}:
+			defer func() { <-semaphore }()
+		default:
+			decisionName = "route_concurrency_limit"
+			WriteError(recorder, NewError("route_concurrency_limit", http.StatusServiceUnavailable, "маршрут перегружен", requestID))
 			return
 		}
 	}
-	g.proxy(rw, r, route)
+	status, backendID, err := g.forward(recorder, r, route, snapshot.pools[route.ID], clientIP)
+	if err != nil {
+		decisionName = "upstream_error"
+		span.End(err)
+		code, httpStatus := "upstream_unavailable", http.StatusBadGateway
+		if errorsIsTimeout(err) {
+			code, httpStatus = "upstream_timeout", http.StatusGatewayTimeout
+		}
+		WriteError(recorder, NewError(code, httpStatus, "upstream недоступен", requestID))
+		return
+	}
+	g.metrics.ObserveUpstream(route.ID, backendID, status, time.Since(started))
 }
-func (g *Runtime) proxy(w http.ResponseWriter, r *http.Request, route config.Route) {
-	raw := route.Upstreams[int(g.rr.Add(1)-1)%len(route.Upstreams)]
-	target, _ := url.Parse(raw)
-	proxy := httputil.NewSingleHostReverseProxy(target)
-	proxy.Transport = &http.Transport{Proxy: http.ProxyFromEnvironment, DialContext: (&net.Dialer{Timeout: 5 * time.Second, KeepAlive: 30 * time.Second}).DialContext, ResponseHeaderTimeout: route.UpstreamTimeout.Duration}
-	original := proxy.Director
-	proxy.Director = func(req *http.Request) {
-		original(req)
-		if route.StripPrefix {
-			req.URL.Path = strings.TrimPrefix(req.URL.Path, route.PathPrefix)
-			if req.URL.Path == "" {
-				req.URL.Path = "/"
+
+func (g *Runtime) forward(w http.ResponseWriter, in *http.Request, route config.Route, pool *upstream.Pool, clientIP string) (int, string, error) {
+	attempts := route.Retry.Attempts
+	if attempts < 1 {
+		attempts = 1
+	}
+	if !slices.Contains(route.Retry.Methods, in.Method) && attempts > 1 {
+		attempts = 1
+	}
+	var body []byte
+	var err error
+	if attempts > 1 && in.Body != nil {
+		body, err = io.ReadAll(in.Body)
+		if err != nil {
+			return 0, "", err
+		}
+	}
+	var lastErr error
+	for attempt := 0; attempt < attempts; attempt++ {
+		if attempt > 0 {
+			select {
+			case <-time.After(route.Retry.Backoff.Duration):
+			case <-in.Context().Done():
+				return 0, "", in.Context().Err()
 			}
 		}
-		for k, v := range route.AddHeaders {
-			req.Header.Set(k, v)
+		selection, selectErr := pool.Select(in)
+		if selectErr != nil {
+			return 0, "", selectErr
 		}
-		for _, k := range route.RemoveHeaders {
-			req.Header.Del(k)
+		backendID := selection.Backend.ID()
+		outbound := cloneRequest(in, selection.Backend.Target(), route, clientIP, body, attempts > 1)
+		response, roundErr := pool.Transport().RoundTrip(outbound)
+		status := 0
+		if response != nil {
+			status = response.StatusCode
 		}
+		pool.ObserveResult(selection.Backend, status, roundErr)
+		selection.Release()
+		if roundErr != nil {
+			lastErr = roundErr
+			if attempt+1 < attempts {
+				continue
+			}
+			return 0, backendID, roundErr
+		}
+		retryable := slices.Contains(route.Retry.Statuses, response.StatusCode) && attempt+1 < attempts
+		if retryable {
+			_, _ = io.Copy(io.Discard, response.Body)
+			_ = response.Body.Close()
+			lastErr = &statusError{status: response.StatusCode}
+			continue
+		}
+		copyHeader(w.Header(), response.Header)
+		for key, value := range route.AddResponseHeaders {
+			w.Header().Set(key, value)
+		}
+		w.WriteHeader(response.StatusCode)
+		_, copyErr := io.Copy(w, response.Body)
+		_ = response.Body.Close()
+		return response.StatusCode, backendID, copyErr
 	}
-	proxy.ErrorHandler = func(w http.ResponseWriter, _ *http.Request, err error) {
-		g.logger.Error("upstream error", "route", route.ID, "error", err)
-		writeJSON(w, 502, map[string]string{"error": "upstream unavailable"})
-	}
-	proxy.ServeHTTP(w, r)
+	return 0, "", lastErr
 }
-func clientIP(r *http.Request) string {
-	if v := r.Header.Get("X-Forwarded-For"); v != "" {
-		return strings.TrimSpace(strings.Split(v, ",")[0])
+
+func applyRewrite(r *http.Request, rewrite *config.Rewrite) {
+	if rewrite == nil {
+		return
 	}
-	h, _, e := net.SplitHostPort(r.RemoteAddr)
-	if e == nil {
-		return h
+	if rewrite.PathPrefix != "" {
+		r.URL.Path = rewrite.PathPrefix + r.URL.Path
 	}
-	return r.RemoteAddr
+	for key, value := range rewrite.SetHeaders {
+		r.Header.Set(key, value)
+	}
 }
-func limitKey(r *http.Request, l *config.Limit) string {
-	if strings.HasPrefix(l.Key, "header:") {
-		return r.Header.Get(strings.TrimPrefix(l.Key, "header:"))
+func rateKey(r *http.Request, limit *config.Limit, ip, subject string) string {
+	switch {
+	case limit.Key == "jwt_subject":
+		return subject
+	case strings.HasPrefix(limit.Key, "header:"):
+		return r.Header.Get(strings.TrimPrefix(limit.Key, "header:"))
+	default:
+		return ip
 	}
-	return clientIP(r)
+}
+func setRateHeaders(header http.Header, result ratelimit.Result) {
+	header.Set("RateLimit-Limit", strconv.Itoa(result.Limit))
+	header.Set("RateLimit-Remaining", strconv.Itoa(result.Remaining))
+	if !result.ResetAt.IsZero() {
+		header.Set("RateLimit-Reset", strconv.FormatInt(result.ResetAt.Unix(), 10))
+		header.Set("Retry-After", strconv.Itoa(max(1, int(time.Until(result.ResetAt).Seconds()))))
+	}
 }
 func requestID() string {
-	b := make([]byte, 12)
-	if _, e := rand.Read(b); e != nil {
+	data := make([]byte, 12)
+	if _, err := rand.Read(data); err != nil {
 		return strconv.FormatInt(time.Now().UnixNano(), 36)
 	}
-	return hex.EncodeToString(b)
+	return hex.EncodeToString(data)
 }
 
-type recorder struct {
-	http.ResponseWriter
-	status int
-}
+type statusError struct{ status int }
 
-func (r *recorder) WriteHeader(s int) { r.status = s; r.ResponseWriter.WriteHeader(s) }
-func writeJSON(w http.ResponseWriter, status int, v any) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(v)
-}
-func clone(c *config.Config) *config.Config {
-	out := *c
-	out.Routes = append([]config.Route(nil), c.Routes...)
-	out.Policies = append([]config.Policy(nil), c.Policies...)
-	return &out
-}
-
-type Metrics struct {
-	mu       sync.Mutex
-	requests map[string]uint64
-	shadow   map[string]uint64
-}
-
-func NewMetrics() *Metrics {
-	return &Metrics{requests: map[string]uint64{}, shadow: map[string]uint64{}}
-}
-func (m *Metrics) Observe(route, decision string, status int) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.requests[route+"|"+decision+"|"+strconv.Itoa(status)]++
-}
-func (m *Metrics) Shadow(policy string) { m.mu.Lock(); defer m.mu.Unlock(); m.shadow[policy]++ }
-func (m *Metrics) ServeHTTP(w http.ResponseWriter, _ *http.Request) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	w.Header().Set("Content-Type", "text/plain; version=0.0.4")
-	_, _ = w.Write([]byte("# HELP gateforge_requests_total Processed requests.\n# TYPE gateforge_requests_total counter\n"))
-	for k, v := range m.requests {
-		p := strings.Split(k, "|")
-		_, _ = w.Write([]byte("gateforge_requests_total{route=\"" + p[0] + "\",decision=\"" + p[1] + "\",status=\"" + p[2] + "\"} " + strconv.FormatUint(v, 10) + "\n"))
-	}
-	for k, v := range m.shadow {
-		_, _ = w.Write([]byte("gateforge_shadow_matches_total{policy=\"" + k + "\"} " + strconv.FormatUint(v, 10) + "\n"))
-	}
-}
+func (e *statusError) Error() string { return "upstream status " + strconv.Itoa(e.status) }
