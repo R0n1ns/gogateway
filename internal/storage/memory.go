@@ -87,5 +87,16 @@ func (r *MemoryRepository) Audit(_ context.Context, limit int) ([]AuditEvent, er
 	}
 	return out, nil
 }
+func (r *MemoryRepository) RecordAudit(_ context.Context, event AuditEvent) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	event.ID = int64(len(r.audit) + 1)
+	if event.CreatedAt.IsZero() {
+		event.CreatedAt = time.Now().UTC()
+	}
+	r.audit = append(r.audit, event)
+	return nil
+}
+
 func (r *MemoryRepository) Close() error     { return nil }
 func cloneSnapshot(source Snapshot) Snapshot { source.Config = source.Config.DeepCopy(); return source }

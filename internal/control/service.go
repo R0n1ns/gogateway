@@ -57,4 +57,8 @@ func (s *Service) Rollback(ctx context.Context, target, expected int64, actor st
 	}
 	return s.Apply(ctx, snapshot.Config, expected, actor, fmt.Sprintf("rollback to revision %d", target))
 }
+func (s *Service) RecordAudit(ctx context.Context, event storage.AuditEvent) error {
+	return s.repository.RecordAudit(ctx, event)
+}
+
 func (s *Service) Close() error { return s.repository.Close() }

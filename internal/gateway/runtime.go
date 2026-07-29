@@ -85,6 +85,24 @@ func (g *Runtime) UpstreamStatus() map[string][]upstream.Status {
 	}
 	return out
 }
+
+// Ready возвращает true, если каждый route имеет хотя бы один healthy upstream.
+func (g *Runtime) Ready() bool {
+	for _, statuses := range g.UpstreamStatus() {
+		healthy := false
+		for _, status := range statuses {
+			if status.Healthy && !status.CircuitOpen {
+				healthy = true
+				break
+			}
+		}
+		if !healthy {
+			return false
+		}
+	}
+	return true
+}
+
 func (g *Runtime) Simulate(r *http.Request, routeID, sourceIP string) policy.Decision {
 	return g.current.Load().engine.Evaluate(r, routeID, sourceIP)
 }

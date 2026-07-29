@@ -105,6 +105,11 @@ func (r *PostgresRepository) Save(ctx context.Context, cfg *config.Config, expec
 	}
 	return Snapshot{Revision: revision, Config: copy, Actor: actor, Comment: comment, CreatedAt: created}, nil
 }
+func (r *PostgresRepository) RecordAudit(ctx context.Context, event AuditEvent) error {
+	_, err := r.db.ExecContext(ctx, `INSERT INTO audit_events(action,actor,revision,details) VALUES($1,$2,$3,$4)`, event.Action, event.Actor, event.Revision, event.Details)
+	return err
+}
+
 func (r *PostgresRepository) Audit(ctx context.Context, limit int) ([]AuditEvent, error) {
 	if limit <= 0 {
 		limit = 100

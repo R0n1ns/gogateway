@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>GateForge Control Plane</title>
+<style>
+:root{color-scheme:dark;--bg:#0b1020;--panel:#151d31;--muted:#91a0ba;--accent:#5eead4;--danger:#fb7185}*{box-sizing:border-box}body{margin:0;font:14px/1.5 Inter,system-ui;background:var(--bg);color:#eef2ff}header{display:flex;gap:18px;align-items:center;padding:18px 28px;border-bottom:1px solid #27324b;position:sticky;top:0;background:#0b1020ee;backdrop-filter:blur(10px)}h1{margin:0;font-size:21px}header span{color:var(--muted)}main{max-width:1280px;margin:auto;padding:24px}.toolbar,.grid{display:grid;gap:16px}.toolbar{grid-template-columns:1fr auto auto;margin-bottom:18px}.grid{grid-template-columns:repeat(4,1fr)}.card,section{background:var(--panel);border:1px solid #27324b;border-radius:12px;padding:18px}.value{font-size:28px;font-weight:700;color:var(--accent)}section{margin-top:18px}textarea,input{width:100%;background:#090e1b;color:#e5e7eb;border:1px solid #34415f;border-radius:8px;padding:10px}textarea{min-height:420px;font:12px/1.5 ui-monospace,monospace}button{border:0;border-radius:8px;padding:10px 14px;background:var(--accent);color:#08201d;font-weight:700;cursor:pointer}button.secondary{background:#334155;color:white}button.danger{background:var(--danger)}table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:9px;border-bottom:1px solid #27324b}.healthy{color:#4ade80}.unhealthy{color:var(--danger)}.split{display:grid;grid-template-columns:1fr 1fr;gap:18px}pre{white-space:pre-wrap;background:#090e1b;padding:12px;border-radius:8px;color:#cbd5e1}@media(max-width:850px){.grid{grid-template-columns:1fr 1fr}.split,.toolbar{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<header><h1>GateForge</h1><span>Application Gateway with Policy Engine</span></header>
+<main>
+<div class="toolbar"><input id="key" type="password" placeholder="Admin API key (сохраняется только в браузере)"><button onclick="saveKey()">Сохранить ключ</button><button class="secondary" onclick="refresh()">Обновить</button></div>
+<div class="grid"><div class="card"><div>Revision</div><div id="revision" class="value">—</div></div><div class="card"><div>Routes</div><div id="routes" class="value">—</div></div><div class="card"><div>Policies</div><div id="policies" class="value">—</div></div><div class="card"><div>Ready</div><div id="ready" class="value">—</div></div></div>
+<section><h2>Upstream status</h2><table><thead><tr><th>Route</th><th>Upstream</th><th>URL</th><th>Health</th><th>Active</th><th>Circuit</th></tr></thead><tbody id="upstreamRows"></tbody></table></section>
+<div class="split"><section><h2>Configuration</h2><textarea id="config"></textarea><p><input id="comment" placeholder="Описание изменения"></p><button onclick="applyConfig()">Проверить и применить</button></section><section><h2>Policy Simulator</h2><textarea id="simulation">{
+  "method": "GET",
+  "host": "example.local",
+  "path": "/api/users",
+  "source_ip": "203.0.113.10"
+}</textarea><p><button onclick="simulate()">Симулировать</button></p><pre id="simulationResult">Результат появится здесь</pre></section></div>
+<section><h2>Configuration versions</h2><table><thead><tr><th>Revision</th><th>Actor</th><th>Comment</th><th>Created</th><th></th></tr></thead><tbody id="versions"></tbody></table></section>
+<section><h2>Audit</h2><table><thead><tr><th>Time</th><th>Actor</th><th>Action</th><th>Revision</th><th>Details</th></tr></thead><tbody id="audit"></tbody></table></section>
+</main>
+<script>
+const keyInput=document.querySelector('#key');keyInput.value=localStorage.getItem('gateforge-api-key')||'';let revision=0;
+function headers(extra={}){const value=keyInput.value;return {...extra,...(value?{'X-API-Key':value}:{})}}
+function saveKey(){localStorage.setItem('gateforge-api-key',keyInput.value);refresh()}
+async function api(path,options={}){options.headers=headers(options.headers||{});const response=await fetch(path,options);const text=await response.text();let data;try{data=text?JSON.parse(text):null}catch{data=text}if(!response.ok)throw new Error(data?.message||data||response.statusText);return data}
+async function refresh(){try{const [cfg,upstreams,versions,audit,readyResponse]=await Promise.all([api('/api/v1/config'),api('/api/v1/upstreams'),api('/api/v1/versions?limit=10'),api('/api/v1/audit?limit=20'),fetch('/readyz')]);revision=cfg.revision||0;document.querySelector('#revision').textContent=revision;document.querySelector('#routes').textContent=cfg.routes.length;document.querySelector('#policies').textContent=cfg.policies.length;document.querySelector('#ready').textContent=readyResponse.ok?'yes':'no';document.querySelector('#config').value=JSON.stringify(cfg,null,2);renderUpstreams(upstreams);renderVersions(versions);renderAudit(audit)}catch(error){alert(error.message)}}
+function renderUpstreams(routes){const rows=[];for(const [route,items] of Object.entries(routes)){for(const item of items)rows.push(`<tr><td>${escapeHTML(route)}</td><td>${escapeHTML(item.id)}</td><td>${escapeHTML(item.url)}</td><td class="${item.healthy?'healthy':'unhealthy'}">${item.healthy?'healthy':'unhealthy'}</td><td>${item.active}</td><td>${item.circuit_open?'open':'closed'}</td></tr>`)}document.querySelector('#upstreamRows').innerHTML=rows.join('')}
+function renderVersions(items){document.querySelector('#versions').innerHTML=items.map(item=>`<tr><td>${item.revision}</td><td>${escapeHTML(item.actor)}</td><td>${escapeHTML(item.comment)}</td><td>${new Date(item.created_at).toLocaleString()}</td><td><button class="danger" onclick="rollback(${item.revision})">Rollback</button></td></tr>`).join('')}
+function renderAudit(items){document.querySelector('#audit').innerHTML=items.map(item=>`<tr><td>${new Date(item.created_at).toLocaleString()}</td><td>${escapeHTML(item.actor)}</td><td>${escapeHTML(item.action)}</td><td>${item.revision}</td><td>${escapeHTML(item.details)}</td></tr>`).join('')}
+async function applyConfig(){try{const body=JSON.stringify(JSON.parse(document.querySelector('#config').value));await api('/api/v1/config',{method:'PUT',headers:{'Content-Type':'application/json','If-Match':String(revision),'X-Actor':'admin-ui','X-Change-Comment':document.querySelector('#comment').value},body});await refresh()}catch(error){alert(error.message)}}
+async function rollback(target){if(!confirm(`Откатиться к revision ${target}?`))return;try{await api(`/api/v1/rollback/${target}`,{method:'POST',headers:{'If-Match':String(revision),'X-Actor':'admin-ui'}});await refresh()}catch(error){alert(error.message)}}
+async function simulate(){try{const result=await api('/api/v1/simulate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(JSON.parse(document.querySelector('#simulation').value))});document.querySelector('#simulationResult').textContent=JSON.stringify(result,null,2)}catch(error){alert(error.message)}}
+function escapeHTML(value){return String(value??'').replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]))}
+refresh()
+</script>
+</body></html>

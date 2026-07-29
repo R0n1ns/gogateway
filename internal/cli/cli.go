@@ -17,9 +17,11 @@ import (
 
 	"github.com/R0n1ns/gogateway/internal/admin"
 	"github.com/R0n1ns/gogateway/internal/config"
+	"github.com/R0n1ns/gogateway/internal/control"
 	"github.com/R0n1ns/gogateway/internal/gateway"
 	"github.com/R0n1ns/gogateway/internal/policytest"
 	"github.com/R0n1ns/gogateway/internal/simulator"
+	"github.com/R0n1ns/gogateway/internal/storage"
 )
 
 func Run(args []string, stdout, stderr io.Writer) int {
@@ -194,23 +196,41 @@ func runGateway(args []string, out, errOut io.Writer) int {
 	if set.Parse(args) != nil {
 		return 2
 	}
-	cfg, err := config.Load(*path)
+	fileConfig, err := config.Load(*path)
 	if err != nil {
 		fmt.Fprintln(errOut, err)
 		return 1
 	}
+	repository, err := storage.Open(context.Background(), fileConfig)
+	if err != nil {
+		fmt.Fprintln(errOut, err)
+		return 1
+	}
+	snapshot, err := repository.Current(context.Background())
+	if err != nil {
+		_ = repository.Close()
+		fmt.Fprintln(errOut, err)
+		return 1
+	}
+	cfg := snapshot.Config
 	logger := slog.New(slog.NewJSONHandler(out, nil))
 	runtime, err := gateway.New(cfg, logger)
 	if err != nil {
+		_ = repository.Close()
 		fmt.Fprintln(errOut, err)
 		return 1
 	}
+	service := control.New(runtime, repository)
+	defer service.Close()
 	defer runtime.Close()
 	public := newServer(cfg.Public, runtime)
-	control := newServer(cfg.Admin.Server, admin.New(runtime, cfg.Admin.APIKey))
+	controlServer := newServer(cfg.Admin.Server, admin.NewWithControl(runtime, service, cfg.Admin.APIKey))
 	errs := make(chan error, 2)
 	go func() { logger.Info("public server started", "address", public.Addr); errs <- public.ListenAndServe() }()
-	go func() { logger.Info("admin server started", "address", control.Addr); errs <- control.ListenAndServe() }()
+	go func() {
+		logger.Info("admin server started", "address", controlServer.Addr)
+		errs <- controlServer.ListenAndServe()
+	}()
 	signals := make(chan os.Signal, 1)
 	signal.Notify(signals, syscall.SIGINT, syscall.SIGTERM)
 	select {
@@ -223,7 +243,7 @@ func runGateway(args []string, out, errOut io.Writer) int {
 	ctx, cancel := context.WithTimeout(context.Background(), cfg.Runtime.ShutdownTimeout.Duration)
 	defer cancel()
 	_ = public.Shutdown(ctx)
-	_ = control.Shutdown(ctx)
+	_ = controlServer.Shutdown(ctx)
 	return 0
 }
 func newServer(cfg config.Server, handler http.Handler) *http.Server {

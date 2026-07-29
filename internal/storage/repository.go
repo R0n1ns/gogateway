@@ -35,5 +35,6 @@ type Repository interface {
 	List(context.Context, int) ([]Snapshot, error)
 	Save(context.Context, *config.Config, int64, string, string) (Snapshot, error)
 	Audit(context.Context, int) ([]AuditEvent, error)
+	RecordAudit(context.Context, AuditEvent) error
 	Close() error
 }
