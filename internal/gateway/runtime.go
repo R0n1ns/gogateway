@@ -325,7 +325,7 @@ func rateKey(r *http.Request, limit *config.Limit, ip, subject string) string {
 func setRateHeaders(header http.Header, result ratelimit.Result) {
 	header.Set("RateLimit-Limit", strconv.Itoa(result.Limit))
 	header.Set("RateLimit-Remaining", strconv.Itoa(result.Remaining))
-	if !result.ResetAt.IsZero() {
+	if !result.Allowed && !result.ResetAt.IsZero() {
 		header.Set("RateLimit-Reset", strconv.FormatInt(result.ResetAt.Unix(), 10))
 		header.Set("Retry-After", strconv.Itoa(max(1, int(time.Until(result.ResetAt).Seconds()))))
 	}
