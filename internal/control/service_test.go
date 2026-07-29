@@ -1,14 +1,15 @@
 package control
 
 import (
-	"github.com/R0n1ns/gogateway/internal/config"
-	"github.com/R0n1ns/gogateway/internal/gateway"
-	"github.com/R0n1ns/gogateway/internal/storage"
 	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"github.com/R0n1ns/gogateway/internal/config"
+	"github.com/R0n1ns/gogateway/internal/gateway"
+	"github.com/R0n1ns/gogateway/internal/storage"
 )
 
 func TestApplyConflictAndRollback(t *testing.T) {

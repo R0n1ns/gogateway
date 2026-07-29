@@ -47,7 +47,7 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		printHelp(stdout)
 		return 0
 	default:
-		fmt.Fprintf(stderr, "неизвестная команда %q\n", command)
+		_, _ = fmt.Fprintf(stderr, "неизвестная команда %q\n", command)
 		printHelp(stderr)
 		return 2
 	}
@@ -67,10 +67,10 @@ func validate(args []string, out, errOut io.Writer) int {
 	}
 	cfg, err := config.Load(*path)
 	if err != nil {
-		fmt.Fprintln(errOut, err)
+		_, _ = fmt.Fprintln(errOut, err)
 		return 1
 	}
-	fmt.Fprintf(out, "конфигурация корректна: routes=%d policies=%d\n", len(cfg.Routes), len(cfg.Policies))
+	_, _ = fmt.Fprintf(out, "конфигурация корректна: routes=%d policies=%d\n", len(cfg.Routes), len(cfg.Policies))
 	return 0
 }
 func format(args []string, out, errOut io.Writer) int {
@@ -83,25 +83,25 @@ func format(args []string, out, errOut io.Writer) int {
 	}
 	data, err := os.ReadFile(*path)
 	if err != nil {
-		fmt.Fprintln(errOut, err)
+		_, _ = fmt.Fprintln(errOut, err)
 		return 1
 	}
 	if _, err = config.Decode(data); err != nil {
-		fmt.Fprintln(errOut, err)
+		_, _ = fmt.Fprintln(errOut, err)
 		return 1
 	}
 	var formatted bytes.Buffer
 	if err = json.Indent(&formatted, data, "", "  "); err != nil {
-		fmt.Fprintln(errOut, err)
+		_, _ = fmt.Fprintln(errOut, err)
 		return 1
 	}
 	formatted.WriteByte('\n')
 	if *write {
 		if err = os.WriteFile(*path, formatted.Bytes(), 0o600); err != nil {
-			fmt.Fprintln(errOut, err)
+			_, _ = fmt.Fprintln(errOut, err)
 			return 1
 		}
-		fmt.Fprintln(out, "конфигурация отформатирована")
+		_, _ = fmt.Fprintln(out, "конфигурация отформатирована")
 		return 0
 	}
 	_, _ = out.Write(formatted.Bytes())
@@ -116,27 +116,27 @@ func simulate(args []string, out, errOut io.Writer) int {
 		return 2
 	}
 	if *requestPath == "" {
-		fmt.Fprintln(errOut, "-request обязателен")
+		_, _ = fmt.Fprintln(errOut, "-request обязателен")
 		return 2
 	}
 	cfg, err := config.Load(*path)
 	if err != nil {
-		fmt.Fprintln(errOut, err)
+		_, _ = fmt.Fprintln(errOut, err)
 		return 1
 	}
 	data, err := os.ReadFile(*requestPath)
 	if err != nil {
-		fmt.Fprintln(errOut, err)
+		_, _ = fmt.Fprintln(errOut, err)
 		return 1
 	}
 	var input simulator.Request
 	if err = json.Unmarshal(data, &input); err != nil {
-		fmt.Fprintln(errOut, err)
+		_, _ = fmt.Fprintln(errOut, err)
 		return 1
 	}
 	service, err := simulator.New(cfg)
 	if err != nil {
-		fmt.Fprintln(errOut, err)
+		_, _ = fmt.Fprintln(errOut, err)
 		return 1
 	}
 	return writeJSON(out, errOut, service.Simulate(input))
@@ -151,17 +151,17 @@ func testPolicies(args []string, out, errOut io.Writer) int {
 	}
 	cfg, err := config.Load(*path)
 	if err != nil {
-		fmt.Fprintln(errOut, err)
+		_, _ = fmt.Fprintln(errOut, err)
 		return 1
 	}
 	file, err := policytest.Load(*casesPath)
 	if err != nil {
-		fmt.Fprintln(errOut, err)
+		_, _ = fmt.Fprintln(errOut, err)
 		return 1
 	}
 	results, err := policytest.Run(cfg, file)
 	if err != nil {
-		fmt.Fprintln(errOut, err)
+		_, _ = fmt.Fprintln(errOut, err)
 		return 1
 	}
 	failed := false
@@ -171,11 +171,11 @@ func testPolicies(args []string, out, errOut io.Writer) int {
 			state = "FAIL"
 			failed = true
 		}
-		fmt.Fprintf(out, "%s %s", state, result.Name)
+		_, _ = fmt.Fprintf(out, "%s %s", state, result.Name)
 		if result.Message != "" {
-			fmt.Fprintf(out, ": %s", result.Message)
+			_, _ = fmt.Fprintf(out, ": %s", result.Message)
 		}
-		fmt.Fprintln(out)
+		_, _ = fmt.Fprintln(out)
 	}
 	if failed {
 		return 1
@@ -186,7 +186,7 @@ func writeJSON(out, errOut io.Writer, value any) int {
 	encoder := json.NewEncoder(out)
 	encoder.SetIndent("", "  ")
 	if err := encoder.Encode(value); err != nil {
-		fmt.Fprintln(errOut, err)
+		_, _ = fmt.Fprintln(errOut, err)
 		return 1
 	}
 	return 0
@@ -200,18 +200,18 @@ func runGateway(args []string, out, errOut io.Writer) int {
 	}
 	fileConfig, err := config.Load(*path)
 	if err != nil {
-		fmt.Fprintln(errOut, err)
+		_, _ = fmt.Fprintln(errOut, err)
 		return 1
 	}
 	repository, err := storage.Open(context.Background(), fileConfig)
 	if err != nil {
-		fmt.Fprintln(errOut, err)
+		_, _ = fmt.Fprintln(errOut, err)
 		return 1
 	}
 	snapshot, err := repository.Current(context.Background())
 	if err != nil {
 		_ = repository.Close()
-		fmt.Fprintln(errOut, err)
+		_, _ = fmt.Fprintln(errOut, err)
 		return 1
 	}
 	cfg := snapshot.Config
@@ -222,7 +222,7 @@ func runGateway(args []string, out, errOut io.Writer) int {
 		telemetry, err = observability.NewOTLP(context.Background(), cfg.Observability)
 		if err != nil {
 			_ = repository.Close()
-			fmt.Fprintln(errOut, err)
+			_, _ = fmt.Fprintln(errOut, err)
 			return 1
 		}
 		tracer = telemetry.Tracer
@@ -235,11 +235,11 @@ func runGateway(args []string, out, errOut io.Writer) int {
 	runtime, err := gateway.NewWithTracer(cfg, logger, tracer)
 	if err != nil {
 		_ = repository.Close()
-		fmt.Fprintln(errOut, err)
+		_, _ = fmt.Fprintln(errOut, err)
 		return 1
 	}
 	service := control.New(runtime, repository)
-	defer service.Close()
+	defer func() { _ = service.Close() }()
 	defer runtime.Close()
 	activeConfig := runtime.Config()
 	public := newServer(activeConfig.Public, runtime)

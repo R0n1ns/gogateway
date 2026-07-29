@@ -1,9 +1,10 @@
 package router
 
 import (
-	"github.com/R0n1ns/gogateway/internal/config"
 	"net/http/httptest"
 	"testing"
+
+	"github.com/R0n1ns/gogateway/internal/config"
 )
 
 func TestMostSpecificRoute(t *testing.T) {

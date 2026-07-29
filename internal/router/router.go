@@ -2,10 +2,11 @@
 package router
 
 import (
-	"github.com/R0n1ns/gogateway/internal/config"
 	"net"
 	"net/http"
 	"strings"
+
+	"github.com/R0n1ns/gogateway/internal/config"
 )
 
 type Router struct{ routes []config.Route }

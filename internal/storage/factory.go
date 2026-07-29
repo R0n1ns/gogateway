@@ -3,6 +3,7 @@ package storage
 import (
 	"context"
 	"errors"
+
 	"github.com/R0n1ns/gogateway/internal/config"
 )
 

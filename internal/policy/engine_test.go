@@ -1,9 +1,10 @@
 package policy
 
 import (
-	"github.com/R0n1ns/gogateway/internal/config"
 	"net/http/httptest"
 	"testing"
+
+	"github.com/R0n1ns/gogateway/internal/config"
 )
 
 func TestEvaluateBlockAndShadow(t *testing.T) {

@@ -1,10 +1,11 @@
 package router
 
 import (
-	"github.com/R0n1ns/gogateway/internal/config"
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/R0n1ns/gogateway/internal/config"
 )
 
 func FuzzRouteMatch(f *testing.F) {

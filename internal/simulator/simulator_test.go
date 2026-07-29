@@ -1,8 +1,9 @@
 package simulator
 
 import (
-	"github.com/R0n1ns/gogateway/internal/config"
 	"testing"
+
+	"github.com/R0n1ns/gogateway/internal/config"
 )
 
 func TestSimulatorSelectsRouteAndExplainsPolicy(t *testing.T) {

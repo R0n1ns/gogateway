@@ -4,6 +4,7 @@ package control
 import (
 	"context"
 	"fmt"
+
 	"github.com/R0n1ns/gogateway/internal/config"
 	"github.com/R0n1ns/gogateway/internal/gateway"
 	"github.com/R0n1ns/gogateway/internal/policy"

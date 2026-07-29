@@ -2,9 +2,10 @@ package storage
 
 import (
 	"context"
-	"github.com/R0n1ns/gogateway/internal/config"
 	"sync"
 	"time"
+
+	"github.com/R0n1ns/gogateway/internal/config"
 )
 
 // MemoryRepository обеспечивает те же revision semantics без внешней БД.

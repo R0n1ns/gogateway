@@ -1,9 +1,10 @@
 package policytest
 
 import (
+	"testing"
+
 	"github.com/R0n1ns/gogateway/internal/config"
 	"github.com/R0n1ns/gogateway/internal/simulator"
-	"testing"
 )
 
 func TestRunReportsMismatch(t *testing.T) {

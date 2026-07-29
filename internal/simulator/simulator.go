@@ -2,6 +2,7 @@
 package simulator
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -56,7 +57,7 @@ func (s *Simulator) Simulate(input Request) Result {
 	for key, value := range input.Query {
 		values.Set(key, value)
 	}
-	request, err := http.NewRequest(method, "http://"+host+path+"?"+values.Encode(), nil)
+	request, err := http.NewRequestWithContext(context.Background(), method, "http://"+host+path+"?"+values.Encode(), nil)
 	if err != nil {
 		return Result{Error: err.Error()}
 	}

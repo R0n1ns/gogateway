@@ -2,11 +2,12 @@ package observability
 
 import (
 	"errors"
+	"net/http/httptest"
+	"testing"
+
 	"go.opentelemetry.io/otel/propagation"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
-	"net/http/httptest"
-	"testing"
 )
 
 func TestAdapterContinuesTraceAndRecordsError(t *testing.T) {

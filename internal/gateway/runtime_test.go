@@ -1,13 +1,14 @@
 package gateway
 
 import (
-	"github.com/R0n1ns/gogateway/internal/config"
 	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/R0n1ns/gogateway/internal/config"
 )
 
 func testRuntime(t *testing.T, up string, policies []config.Policy) *Runtime {

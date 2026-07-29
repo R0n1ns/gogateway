@@ -1,9 +1,10 @@
 package ratelimit
 
 import (
-	"github.com/R0n1ns/gogateway/internal/config"
 	"testing"
 	"time"
+
+	"github.com/R0n1ns/gogateway/internal/config"
 )
 
 func TestTokenBucketRefillsGradually(t *testing.T) {
@@ -11,8 +12,11 @@ func TestTokenBucketRefillsGradually(t *testing.T) {
 	now := time.Unix(100, 0)
 	limiter.now = func() time.Time { return now }
 	spec := config.Limit{Requests: 2, Burst: 0, Window: config.Duration{Duration: time.Second}}
-	if !limiter.Acquire("client", spec).Allowed || !limiter.Acquire("client", spec).Allowed || limiter.Acquire("client", spec).Allowed {
-		t.Fatal("неверная начальная ёмкость")
+	first := limiter.Acquire("client", spec).Allowed
+	second := limiter.Acquire("client", spec).Allowed
+	third := limiter.Acquire("client", spec).Allowed
+	if !first || !second || third {
+		t.Fatalf("неверная начальная ёмкость: %v %v %v", first, second, third)
 	}
 	now = now.Add(500 * time.Millisecond)
 	if !limiter.Acquire("client", spec).Allowed {

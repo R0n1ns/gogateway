@@ -56,7 +56,7 @@ func (r *PostgresRepository) List(ctx context.Context, limit int) ([]Snapshot, e
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var out []Snapshot
 	for rows.Next() {
 		item, scanErr := scanSnapshot(rows)
@@ -118,7 +118,7 @@ func (r *PostgresRepository) Audit(ctx context.Context, limit int) ([]AuditEvent
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var out []AuditEvent
 	for rows.Next() {
 		var item AuditEvent

@@ -1,14 +1,15 @@
 package tests
 
 import (
-	"github.com/R0n1ns/gogateway/internal/config"
-	"github.com/R0n1ns/gogateway/internal/gateway"
 	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"sync/atomic"
 	"testing"
+
+	"github.com/R0n1ns/gogateway/internal/config"
+	"github.com/R0n1ns/gogateway/internal/gateway"
 )
 
 func TestWeightedGatewayEndToEnd(t *testing.T) {

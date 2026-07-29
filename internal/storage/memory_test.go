@@ -3,8 +3,9 @@ package storage
 import (
 	"context"
 	"errors"
-	"github.com/R0n1ns/gogateway/internal/config"
 	"testing"
+
+	"github.com/R0n1ns/gogateway/internal/config"
 )
 
 func TestMemoryRepositoryRevisionConflictAndIsolation(t *testing.T) {

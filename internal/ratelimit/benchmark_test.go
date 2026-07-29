@@ -1,10 +1,11 @@
 package ratelimit
 
 import (
-	"github.com/R0n1ns/gogateway/internal/config"
 	"strconv"
 	"testing"
 	"time"
+
+	"github.com/R0n1ns/gogateway/internal/config"
 )
 
 func BenchmarkAcquireParallel(b *testing.B) {

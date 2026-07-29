@@ -2,10 +2,11 @@ package admin
 
 import (
 	"context"
+	"net/http"
+
 	"github.com/R0n1ns/gogateway/internal/config"
 	"github.com/R0n1ns/gogateway/internal/storage"
 	"github.com/R0n1ns/gogateway/internal/upstream"
-	"net/http"
 )
 
 // DataPlane — минимальный read/control contract, необходимый административному API.

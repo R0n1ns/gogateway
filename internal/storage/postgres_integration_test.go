@@ -1,9 +1,11 @@
 package storage
 
 import (
-	"github.com/R0n1ns/gogateway/internal/config"
+	"errors"
 	"os"
 	"testing"
+
+	"github.com/R0n1ns/gogateway/internal/config"
 )
 
 func TestPostgresRepositoryIntegration(t *testing.T) {
@@ -16,12 +18,12 @@ func TestPostgresRepositoryIntegration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer repo.Close()
+	defer func() { _ = repo.Close() }()
 	current, err := repo.Current(t.Context())
 	expected := int64(0)
 	if err == nil {
 		expected = current.Revision
-	} else if err != ErrNotFound {
+	} else if !errors.Is(err, ErrNotFound) {
 		t.Fatal(err)
 	}
 	cfg := &config.Config{Version: 1}
