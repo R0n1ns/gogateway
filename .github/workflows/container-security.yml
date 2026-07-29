@@ -1,0 +1,44 @@
+name: Безопасность контейнера
+
+on:
+  pull_request:
+  push:
+    branches: [master, main]
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: gateforge
+          push: false
+          load: true
+          tags: gateforge:ci
+      - id: scan
+        uses: anchore/scan-action@v7
+        with:
+          image: gateforge:ci
+          fail-build: true
+          severity-cutoff: critical
+          only-fixed: true
+      - uses: github/codeql-action/upload-sarif@v4
+        if: always()
+        with:
+          sarif_file: ${{ steps.scan.outputs.sarif }}
+      - uses: anchore/sbom-action@v0
+        with:
+          image: gateforge:ci
+          format: spdx-json
+          output-file: gateforge.spdx.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sbom
+          path: gateforge.spdx.json

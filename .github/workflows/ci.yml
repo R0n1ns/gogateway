@@ -1,16 +1,77 @@
-name: CI
+name: Проверка качества
+
 on:
   push:
   pull_request:
+
+permissions:
+  contents: read
+
 jobs:
   test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_USER: gateforge
+          POSTGRES_PASSWORD: gateforge
+          POSTGRES_DB: gateforge_test
+        options: >-
+          --health-cmd "pg_isready -U gateforge -d gateforge_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+        ports:
+          - 5432:5432
+    env:
+      GATEFORGE_TEST_DATABASE: postgres://gateforge:gateforge@127.0.0.1:5432/gateforge_test?sslmode=disable
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.x'
+          cache: true
+      - name: Скачать зависимости
+        run: go mod download
+      - name: Проверить форматирование
+        run: test -z "$(gofmt -l .)"
+      - name: Выполнить статический анализ
+        run: go vet ./...
+      - name: Запустить тесты с race detector
+        run: go test -race -coverprofile=coverage.out -covermode=atomic ./...
+      - name: Проверить конфигурацию и политики
+        run: |
+          go run ./cmd/gateforge validate -config configs/gateforge.json
+          go run ./cmd/gateforge test -config configs/gateforge.json -cases configs/policy-tests.json
+      - name: Проверить fuzz-цели
+        run: |
+          go test ./internal/router -run=^$ -fuzz=FuzzRouteMatch -fuzztime=5s
+          go test ./internal/policy -run=^$ -fuzz=FuzzStringMatcher -fuzztime=5s
+      - name: Собрать команды
+        run: go build ./cmd/...
+      - uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: coverage.out
+
+  lint:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
           go-version: '1.26.x'
-      - run: test -z "$(gofmt -l .)"
-      - run: go vet ./...
-      - run: go test -race -coverprofile=coverage.out ./...
-      - run: go build ./cmd/gateforge
+      - uses: golangci/golangci-lint-action@v9
+        with:
+          version: v2.11
+
+  vulnerabilities:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.x'
+      - name: Проверить известные уязвимости
+        run: go run golang.org/x/vuln/cmd/govulncheck@latest ./...
