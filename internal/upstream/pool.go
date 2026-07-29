@@ -233,7 +233,8 @@ func (p *Pool) Status() []Status {
 	out := make([]Status, 0, len(p.backends))
 	for _, b := range p.backends {
 		b.mu.Lock()
-		out = append(out, Status{ID: b.id, URL: b.target.String(), Healthy: b.healthy.Load(), Active: b.active.Load(), CircuitOpen: !b.openedAt.IsZero() && now.Sub(b.openedAt) < p.route.CircuitBreaker.OpenTimeout.Duration, Failures: b.consecutiveFailure})
+		safeURL := (&url.URL{Scheme: b.target.Scheme, Host: b.target.Host}).String()
+		out = append(out, Status{ID: b.id, URL: safeURL, Healthy: b.healthy.Load(), Active: b.active.Load(), CircuitOpen: !b.openedAt.IsZero() && now.Sub(b.openedAt) < p.route.CircuitBreaker.OpenTimeout.Duration, Failures: b.consecutiveFailure})
 		b.mu.Unlock()
 	}
 	return out

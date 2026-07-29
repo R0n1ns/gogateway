@@ -94,8 +94,13 @@ func (h *Handler) putConfig(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("ETag", strconv.FormatInt(snapshot.Revision, 10))
 	write(w, 200, snapshot)
 }
-func (h *Handler) getPolicies(w http.ResponseWriter, _ *http.Request) {
-	write(w, 200, h.runtime.Config().Policies)
+func (h *Handler) getPolicies(w http.ResponseWriter, r *http.Request) {
+	cfg, err := h.currentConfig(r.Context())
+	if err != nil {
+		handleError(w, err)
+		return
+	}
+	write(w, 200, cfg.Policies)
 }
 func (h *Handler) addPolicy(w http.ResponseWriter, r *http.Request) {
 	var policy config.Policy
@@ -148,8 +153,13 @@ func (h *Handler) deletePolicy(w http.ResponseWriter, r *http.Request) {
 	}
 	w.WriteHeader(204)
 }
-func (h *Handler) getRoutes(w http.ResponseWriter, _ *http.Request) {
-	write(w, 200, h.runtime.Config().Routes)
+func (h *Handler) getRoutes(w http.ResponseWriter, r *http.Request) {
+	cfg, err := h.currentConfig(r.Context())
+	if err != nil {
+		handleError(w, err)
+		return
+	}
+	write(w, 200, cfg.Routes)
 }
 func (h *Handler) addRoute(w http.ResponseWriter, r *http.Request) {
 	var route config.Route

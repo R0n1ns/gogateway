@@ -101,3 +101,16 @@ func TestActiveHealthCheck(t *testing.T) {
 func testRoute(strategy string, backends []config.Upstream) config.Route {
 	return config.Route{ID: "route", UpstreamPool: backends, Balance: config.Balance{Strategy: strategy}, UpstreamTimeout: config.Duration{Duration: time.Second}, Retry: config.Retry{Attempts: 1}}
 }
+
+func TestStatusHidesURLCredentialsAndPath(t *testing.T) {
+	route := testRoute("round_robin", []config.Upstream{{ID: "private", URL: "http://user:password@example.test/private?token=secret", Weight: 1}})
+	pool, err := New(route)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pool.Close()
+	statuses := pool.Status()
+	if len(statuses) != 1 || statuses[0].URL != "http://example.test" {
+		t.Fatalf("небезопасный status URL: %+v", statuses)
+	}
+}

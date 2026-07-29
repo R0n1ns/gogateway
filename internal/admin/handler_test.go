@@ -90,3 +90,32 @@ func doAdmin(handler http.Handler, method, path string, body []byte, headers map
 	handler.ServeHTTP(response, request)
 	return response
 }
+
+func TestListEndpointsDoNotExposeResolvedSecrets(t *testing.T) {
+	handler, runtime, service, cleanup := testHandler(t)
+	defer cleanup()
+
+	cfg := runtime.Config()
+	backendURL := cfg.Routes[0].UpstreamPool[0].URL
+	t.Setenv("BACKEND_URL", backendURL)
+	t.Setenv("SERVICE_KEY", "resolved-service-secret")
+	cfg.Routes[0].UpstreamPool[0].URL = "${BACKEND_URL}"
+	cfg.Policies = append(cfg.Policies, config.Policy{
+		ID: "auth", Priority: 20, Mode: config.ModeBlock, Action: config.ActionAuthenticate,
+		Auth: &config.Auth{Type: "api_key", Header: "X-Service-Key", Value: "${SERVICE_KEY}"},
+	})
+	if _, err := service.Apply(t.Context(), cfg, cfg.Revision, "test", "secret placeholders"); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, path := range []string{"/api/v1/routes", "/api/v1/policies"} {
+		response := doAdmin(handler, "GET", path, nil, nil)
+		body := response.Body.String()
+		if response.Code != http.StatusOK {
+			t.Fatalf("%s status=%d body=%s", path, response.Code, body)
+		}
+		if bytes.Contains([]byte(body), []byte("resolved-service-secret")) || bytes.Contains([]byte(body), []byte(backendURL)) {
+			t.Fatalf("%s раскрыл resolved secret: %s", path, body)
+		}
+	}
+}
