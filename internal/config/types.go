@@ -44,6 +44,8 @@ type Observability struct {
 	ServiceName    string  `json:"service_name,omitempty"`
 	TracingEnabled bool    `json:"tracing_enabled,omitempty"`
 	SampleRate     float64 `json:"sample_rate,omitempty"`
+	OTLPEndpoint   string  `json:"otlp_endpoint,omitempty"`
+	OTLPInsecure   bool    `json:"otlp_insecure,omitempty"`
 }
 
 type AccessLog struct {

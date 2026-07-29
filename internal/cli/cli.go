@@ -14,11 +14,13 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/R0n1ns/gogateway/internal/admin"
 	"github.com/R0n1ns/gogateway/internal/config"
 	"github.com/R0n1ns/gogateway/internal/control"
 	"github.com/R0n1ns/gogateway/internal/gateway"
+	"github.com/R0n1ns/gogateway/internal/observability"
 	"github.com/R0n1ns/gogateway/internal/policytest"
 	"github.com/R0n1ns/gogateway/internal/simulator"
 	"github.com/R0n1ns/gogateway/internal/storage"
@@ -214,7 +216,23 @@ func runGateway(args []string, out, errOut io.Writer) int {
 	}
 	cfg := snapshot.Config
 	logger := slog.New(slog.NewJSONHandler(out, nil))
-	runtime, err := gateway.New(cfg, logger)
+	tracer := gateway.NewW3CTracer()
+	var telemetry *observability.Provider
+	if cfg.Observability.TracingEnabled && cfg.Observability.OTLPEndpoint != "" {
+		telemetry, err = observability.NewOTLP(context.Background(), cfg.Observability)
+		if err != nil {
+			_ = repository.Close()
+			fmt.Fprintln(errOut, err)
+			return 1
+		}
+		tracer = telemetry.Tracer
+		defer func() {
+			shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			_ = telemetry.Shutdown(shutdownCtx)
+		}()
+	}
+	runtime, err := gateway.NewWithTracer(cfg, logger, tracer)
 	if err != nil {
 		_ = repository.Close()
 		fmt.Fprintln(errOut, err)

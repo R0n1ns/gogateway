@@ -30,7 +30,7 @@
     },
     "runtime": {"type":"object","additionalProperties":false,"properties":{"shutdown_timeout":{"$ref":"#/$defs/duration"},"trusted_proxies":{"type":"array","items":{"type":"string"}},"max_config_bytes":{"type":"integer","minimum":1024}}},
     "storage": {"type":"object","additionalProperties":false,"properties":{"driver":{"enum":["memory","postgres"]},"dsn":{"type":"string"},"max_open_conns":{"type":"integer","minimum":1},"max_idle_conns":{"type":"integer","minimum":0}}},
-    "observability": {"type":"object","additionalProperties":false,"properties":{"service_name":{"type":"string"},"tracing_enabled":{"type":"boolean"},"sample_rate":{"type":"number","minimum":0,"maximum":1}}},
+    "observability": {"type":"object","additionalProperties":false,"properties":{"service_name":{"type":"string"},"tracing_enabled":{"type":"boolean"},"sample_rate":{"type":"number","minimum":0,"maximum":1},"otlp_endpoint":{"type":"string"},"otlp_insecure":{"type":"boolean"}}},
     "accessLog": {"type":"object","additionalProperties":false,"properties":{"enabled":{"type":"boolean"},"format":{"enum":["json"]}}},
     "upstream": {"type":"object","additionalProperties":false,"required":["url"],"properties":{"id":{"type":"string"},"url":{"type":"string","format":"uri"},"weight":{"type":"integer","minimum":1}}},
     "balance": {"type":"object","additionalProperties":false,"properties":{"strategy":{"enum":["round_robin","weighted_round_robin","least_connections","random","consistent_hash"]},"hash_key":{"type":"string"}}},

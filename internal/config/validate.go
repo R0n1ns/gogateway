@@ -31,6 +31,12 @@ func (c *Config) Validate() error {
 	if c.Observability.SampleRate < 0 || c.Observability.SampleRate > 1 {
 		errs = append(errs, errors.New("observability.sample_rate должен быть от 0 до 1"))
 	}
+	if c.Observability.OTLPEndpoint != "" {
+		endpoint, err := url.Parse(c.Observability.OTLPEndpoint)
+		if err != nil || endpoint.Scheme == "" || endpoint.Host == "" {
+			errs = append(errs, errors.New("observability.otlp_endpoint должен быть абсолютным URL"))
+		}
+	}
 	for _, cidr := range c.Runtime.TrustedProxies {
 		if _, _, err := net.ParseCIDR(cidr); err != nil {
 			errs = append(errs, fmt.Errorf("runtime.trusted_proxies содержит некорректный CIDR %q", cidr))

@@ -148,7 +148,8 @@ func (g *Runtime) Update(input *config.Config) error {
 func (g *Runtime) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	started := time.Now()
 	r, span := g.tracer.Start(r)
-	defer span.End(nil)
+	var spanErr error
+	defer func() { span.End(spanErr) }()
 	requestID := requestID()
 	w.Header().Set("X-Request-ID", requestID)
 	if span.TraceID() != "" {
@@ -225,7 +226,7 @@ func (g *Runtime) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	status, backendID, err := g.forward(recorder, r, route, snapshot.pools[route.ID], clientIP)
 	if err != nil {
 		decisionName = "upstream_error"
-		span.End(err)
+		spanErr = err
 		code, httpStatus := "upstream_unavailable", http.StatusBadGateway
 		if errorsIsTimeout(err) {
 			code, httpStatus = "upstream_timeout", http.StatusGatewayTimeout

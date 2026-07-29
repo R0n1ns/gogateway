@@ -21,8 +21,8 @@ import (
 var assets embed.FS
 
 type Handler struct {
-	runtime *gateway.Runtime
-	control *control.Service
+	runtime DataPlane
+	control ControlPlane
 	apiKey  string
 	mux     *http.ServeMux
 }
@@ -30,7 +30,7 @@ type Handler struct {
 func New(runtime *gateway.Runtime, key string) *Handler {
 	return NewWithControl(runtime, control.New(runtime, storage.NewMemory(runtime.Config())), key)
 }
-func NewWithControl(runtime *gateway.Runtime, service *control.Service, key string) *Handler {
+func NewWithControl(runtime DataPlane, service ControlPlane, key string) *Handler {
 	h := &Handler{runtime: runtime, control: service, apiKey: key, mux: http.NewServeMux()}
 	h.routes()
 	return h
