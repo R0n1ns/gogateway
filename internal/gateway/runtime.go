@@ -112,40 +112,68 @@ func (g *Runtime) Simulate(r *http.Request, routeID, sourceIP string) policy.Dec
 
 // Update сначала полностью компилирует новый snapshot и только затем публикует его.
 func (g *Runtime) Update(input *config.Config) error {
+	prepared, err := Prepare(input)
+	if err != nil {
+		return err
+	}
+	g.Publish(prepared, input.Revision)
+	return nil
+}
+
+// Prepared owns a fully validated snapshot until publication or Close.
+// It must not be shared or reused after publication.
+type Prepared struct{ next *state }
+
+func (p *Prepared) Close() {
+	if p.next != nil {
+		p.next.close()
+		p.next = nil
+	}
+}
+
+// Prepare completes all fallible work before a repository commit.
+func Prepare(input *config.Config) (*Prepared, error) {
 	cfg := input.DeepCopy()
 	cfg.Defaults()
 	cfg.ExpandEnvironment()
 	cfg.Normalize()
 	if err := cfg.Validate(); err != nil {
-		return err
+		return nil, err
 	}
 	engine, err := policy.Compile(cfg.Policies)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	next := &state{cfg: cfg, router: router.New(cfg.Routes), engine: engine, pools: map[string]*upstream.Pool{}, concurrency: map[string]chan struct{}{}}
 	next.trusted, err = NewTrustedProxies(cfg.Runtime.TrustedProxies)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	for _, route := range cfg.Routes {
 		pool, poolErr := upstream.New(route)
 		if poolErr != nil {
 			next.close()
-			return poolErr
+			return nil, poolErr
 		}
 		next.pools[route.ID] = pool
 		if route.MaxConcurrent > 0 {
 			next.concurrency[route.ID] = make(chan struct{}, route.MaxConcurrent)
 		}
 	}
+	return &Prepared{next: next}, nil
+}
+
+// Publish cannot fail. The control service serializes commit and publication.
+func (g *Runtime) Publish(prepared *Prepared, revision int64) {
+	next := prepared.next
+	prepared.next = nil
+	next.cfg.Revision = revision
 	previous := g.current.Swap(next)
 	g.limiter.Reset()
-	g.metrics.SetConfigRevision(cfg.Revision)
+	g.metrics.SetConfigRevision(revision)
 	if previous != nil {
 		previous.close()
 	}
-	return nil
 }
 
 func (g *Runtime) ServeHTTP(w http.ResponseWriter, r *http.Request) {

@@ -4,14 +4,15 @@ package control
 import (
 	"context"
 	"fmt"
+	"sync"
 
 	"github.com/R0n1ns/gogateway/internal/config"
 	"github.com/R0n1ns/gogateway/internal/gateway"
-	"github.com/R0n1ns/gogateway/internal/policy"
 	"github.com/R0n1ns/gogateway/internal/storage"
 )
 
 type Service struct {
+	mu         sync.RWMutex
 	runtime    *gateway.Runtime
 	repository storage.Repository
 }
@@ -20,6 +21,8 @@ func New(runtime *gateway.Runtime, repository storage.Repository) *Service {
 	return &Service{runtime: runtime, repository: repository}
 }
 func (s *Service) Current(ctx context.Context) (storage.Snapshot, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	return s.repository.Current(ctx)
 }
 func (s *Service) Get(ctx context.Context, revision int64) (storage.Snapshot, error) {
@@ -32,25 +35,21 @@ func (s *Service) Audit(ctx context.Context, limit int) ([]storage.AuditEvent, e
 	return s.repository.Audit(ctx, limit)
 }
 func (s *Service) Apply(ctx context.Context, input *config.Config, expected int64, actor, comment string) (storage.Snapshot, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	raw := input.DeepCopy()
 	raw.Defaults()
 	raw.Normalize()
-	resolved := raw.DeepCopy()
-	resolved.ExpandEnvironment()
-	resolved.Normalize()
-	if err := resolved.Validate(); err != nil {
+	prepared, err := gateway.Prepare(raw)
+	if err != nil {
 		return storage.Snapshot{}, err
 	}
-	if _, err := policy.Compile(resolved.Policies); err != nil {
-		return storage.Snapshot{}, err
-	}
+	defer prepared.Close()
 	snapshot, err := s.repository.Save(ctx, raw, expected, actor, comment)
 	if err != nil {
 		return storage.Snapshot{}, err
 	}
-	if err = s.runtime.Update(snapshot.Config); err != nil {
-		return storage.Snapshot{}, fmt.Errorf("snapshot сохранён, но не опубликован: %w", err)
-	}
+	s.runtime.Publish(prepared, snapshot.Revision)
 	return snapshot, nil
 }
 func (s *Service) Rollback(ctx context.Context, target, expected int64, actor string) (storage.Snapshot, error) {
