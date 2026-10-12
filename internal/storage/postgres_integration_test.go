@@ -1,3 +1,5 @@
+//go:build integration
+
 package storage
 
 import (
@@ -11,7 +13,7 @@ import (
 func TestPostgresRepositoryIntegration(t *testing.T) {
 	dsn := os.Getenv("GATEFORGE_TEST_DATABASE")
 	if dsn == "" {
-		t.Skip("GATEFORGE_TEST_DATABASE не задан")
+		t.Fatal("GATEFORGE_TEST_DATABASE обязателен для integration")
 	}
 	settings := config.Storage{Driver: "postgres", DSN: dsn, MaxOpenConns: 2, MaxIdleConns: 1}
 	repo, err := NewPostgres(t.Context(), settings)
