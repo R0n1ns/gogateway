@@ -16,3 +16,10 @@ FROM gcr.io/distroless/static-debian12:nonroot AS demo-backend
 COPY --from=build /out/demo-backend /demo-backend
 EXPOSE 8080
 ENTRYPOINT ["/demo-backend"]
+
+FROM build AS test-build
+RUN CGO_ENABLED=0 go build -trimpath -o /out/test-backend ./cmd/test-backend
+
+FROM gcr.io/distroless/static-debian12:nonroot AS test-backend
+COPY --from=test-build /out/test-backend /test-backend
+ENTRYPOINT ["/test-backend"]
