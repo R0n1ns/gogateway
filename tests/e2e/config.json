@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "public": {"address": ":8080"},
+  "admin": {"address": ":9090", "api_key": "${GATEFORGE_ADMIN_API_KEY}"},
+  "runtime": {"shutdown_timeout": "3s", "trusted_proxies": []},
+  "storage": {"driver": "postgres", "dsn": "${GATEFORGE_DATABASE_DSN}"},
+  "access_log": {"enabled": true},
+  "routes": [{"id": "api", "path_prefix": "/api", "upstream_pool": [{"id": "a", "url": "http://backend-a:8080"}], "max_body_bytes": 4096, "upstream_timeout": "2s"}],
+  "policies": []
+}
