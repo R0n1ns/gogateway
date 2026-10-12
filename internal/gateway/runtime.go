@@ -2,11 +2,14 @@
 package gateway
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"slices"
 	"strconv"
@@ -183,6 +186,9 @@ func (g *Runtime) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		r.Body = http.MaxBytesReader(recorder, r.Body, route.MaxBodyBytes)
 	}
 	clientIP := ClientIP(r, snapshot.trusted)
+	if !snapshot.trusted.Contains(net.ParseIP(remoteIP(r.RemoteAddr))) {
+		r.Header.Del("X-Forwarded-For")
+	}
 	decision := snapshot.engine.Evaluate(r, route.ID, clientIP)
 	for _, id := range decision.Shadow {
 		g.logger.Warn("shadow policy matched", "request_id", requestID, "policy_id", id)
@@ -222,6 +228,23 @@ func (g *Runtime) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			WriteError(recorder, NewError("route_concurrency_limit", http.StatusServiceUnavailable, "маршрут перегружен", requestID))
 			return
 		}
+	}
+	if route.MaxBodyBytes > 0 && r.Body != nil {
+		body, readErr := io.ReadAll(r.Body)
+		_ = r.Body.Close()
+		if readErr != nil {
+			var tooLarge *http.MaxBytesError
+			if errors.As(readErr, &tooLarge) {
+				decisionName = "body_too_large"
+				WriteError(recorder, NewError("body_too_large", http.StatusRequestEntityTooLarge, "тело запроса превышает лимит", requestID))
+			} else {
+				WriteError(recorder, NewError("invalid_body", http.StatusBadRequest, "не удалось прочитать тело", requestID))
+			}
+			return
+		}
+		r.Body = io.NopCloser(bytes.NewReader(body))
+		r.ContentLength = int64(len(body))
+		r.TransferEncoding = nil
 	}
 	status, backendID, err := g.forward(recorder, r, route, snapshot.pools[route.ID], clientIP)
 	if err != nil {
