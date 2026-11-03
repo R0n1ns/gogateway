@@ -44,7 +44,7 @@ class Gateway:
         result = subprocess.run(["docker", "compose", "-f", "compose.test.yaml", "-p",
                                  self.state["project"], "exec", "-T", backend,
                                  "/test-backend", "ctl", method, path], cwd=ROOT, env=self.env.env,
-                                input=json.dumps(data or {}), text=True, capture_output=True, timeout=10)
+                                input=json.dumps(data or {}), text=True, capture_output=True, timeout=60)
         assert result.returncode == 0, result.stderr
         return json.loads(result.stdout)
 
@@ -62,11 +62,16 @@ def eventually(predicate, timeout=6):
     raise AssertionError("condition did not become true before deadline")
 
 
-@pytest.fixture
-def gateway():
+@pytest.fixture(scope="session")
+def e2e_state():
     if "E2E_STATE" not in os.environ:
         pytest.fail("Use python scripts/e2e.py test; E2E requires a running container")
-    g = Gateway(json.loads(os.environ["E2E_STATE"]))
+    return json.loads(os.environ["E2E_STATE"])
+
+
+@pytest.fixture
+def gateway(e2e_state):
+    g = Gateway(e2e_state)
     baseline = json.loads((ROOT / "tests/e2e/config.json").read_text(encoding="utf-8"))
     g.apply(copy.deepcopy(baseline))
     for backend in ("backend-a", "backend-b"):

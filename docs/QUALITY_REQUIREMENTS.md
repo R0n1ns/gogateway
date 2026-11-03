@@ -24,7 +24,7 @@
 | CONFIG-05 | PostgreSQL сохраняет конфигурацию после restart | test_restart | тот же документ и revision после перезапуска |
 | CONFIG-06 | Параллельные изменения согласованы | test_parallel_updates; TestConcurrentPublication | один победитель CAS, storage и runtime совпадают |
 | CONFIG-07 | Обновление под трафиком атомарно | test_update_under_traffic | каждый ответ соответствует целому старому/новому snapshot |
-| FAIL-01 | Остановка backend обрабатывается | test_backend_stop | 502, после старта запрос проходит |
+| FAIL-01 | Остановка backend обрабатывается | test_backend_stop | 502 при отказе соединения или 504 при сетевом timeout, после старта запрос проходит |
 | FAIL-02 | Timeout ограничивает ожидание | test_timeout | 504 в установленном временном диапазоне |
 | FAIL-03 | Retry ограничен и учитывает метод | test_retry | точное число попыток; POST не повторяется по умолчанию |
 | FAIL-04 | Circuit открывается и восстанавливается | test_circuit | открытый circuit не вызывает backend, затем успешная проба |

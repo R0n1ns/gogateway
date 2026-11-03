@@ -25,6 +25,7 @@ class Environment:
             raise ValueError("Only gf-test-* project names are permitted")
         self.env = dict(os.environ, GATEFORGE_TEST_IMAGE=image)
         self.image = image
+        self.started = False
         self.output = Path(output or ROOT / "artifacts" / self.project).resolve()
         self.output.mkdir(parents=True, exist_ok=True)
 
@@ -37,6 +38,7 @@ class Environment:
 
     def up(self):
         image_id = command(["docker", "image", "inspect", self.image, "--format", "{{.Id}}"]).stdout.strip()
+        self.started = True
         self.compose("up", "-d", "--no-build", timeout=240)
         self.public, self.admin = self.url("gateforge", 8080), self.url("gateforge", 9090)
         self.wait_ready()
@@ -62,6 +64,8 @@ class Environment:
         raise TimeoutError("GateForge readiness deadline exceeded")
 
     def down(self):
+        if not self.started:
+            return
         try:
             logs = self.compose("logs", "--no-color", check=False)
             (self.output / "compose.log").write_text(logs.stdout + logs.stderr, encoding="utf-8")
@@ -81,6 +85,7 @@ def main():
     if args.action == "down" and not args.project:
         parser.error("down requires --project (printed by up)")
     environment = Environment(args.image, args.project, args.output)
+    environment.started = args.action == "down"
     signal.signal(signal.SIGTERM, lambda *_: sys.exit(143))
     success = False
     try:
@@ -91,7 +96,7 @@ def main():
         if args.action == "up":
             success = True
             return 0
-        env = dict(environment.env, E2E_STATE=json.dumps(state))
+        env = dict(environment.env, E2E_STATE=json.dumps(state), PYTEST_DISABLE_PLUGIN_AUTOLOAD="1")
         result = subprocess.run([sys.executable, "-m", "pytest", "tests/e2e", "-q",
                                  "--junitxml=" + str(environment.output / "junit.xml")],
                                 cwd=ROOT, env=env, timeout=600)

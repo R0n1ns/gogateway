@@ -96,7 +96,7 @@ def test_admin_auth(gateway):
 
 def test_rate_limit(gateway):
     cfg = gateway.config()
-    cfg["policies"] = [policy("rate_limit", limit={"requests": 1, "burst": 1, "window": "1h", "key": "ip"})]
+    cfg["policies"] = [policy("rate_limit", limit={"requests": 1, "burst": 0, "window": "1h", "key": "ip"})]
     gateway.apply(cfg)
     assert gateway.request().status_code == 200
     assert gateway.request().status_code == 429
@@ -174,6 +174,9 @@ def test_restart(gateway):
     gateway.apply(cfg)
     before = gateway.config()
     gateway.env.compose("restart", "gateforge")
+    gateway.state["public"] = gateway.env.url("gateforge", 8080)
+    gateway.state["admin"] = gateway.env.url("gateforge", 9090)
+    gateway.env.admin = gateway.state["admin"]
     gateway.env.wait_ready()
     assert gateway.config() == before
     assert gateway.request().headers["X-Persisted"] == "yes"
