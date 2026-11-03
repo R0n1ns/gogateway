@@ -1,0 +1,11 @@
+{
+  "go": "1.26.9",
+  "python": "3.12.12",
+  "golangci_lint": "v2.14.0",
+  "govulncheck": "v1.1.4",
+  "gosec": "v2.29.0",
+  "grype": "v0.120.1",
+  "baseline_commit": "30f88274ae4735f3b585934b86d6dc3265d8b5ad",
+  "baseline_archive_sha256": "eb04ed44fa80e938597800768c6b2ffbc2d9f87865717b3483b11a0337e515fb",
+  "platform": "linux/amd64"
+}

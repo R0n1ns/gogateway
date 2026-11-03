@@ -12,13 +12,16 @@ ARTIFACT_FIELDS = ("commit", "image_id", "archive_sha256", "platform")
 def evaluate(needs, reports, manifest, commit, run_id):
     reasons = []
     stages = {}
+    needs = needs if isinstance(needs, dict) else {}
+    reports = reports if isinstance(reports, dict) else {}
     if not isinstance(manifest, dict) or any(not manifest.get(k) for k in ARTIFACT_FIELDS):
         reasons.append("missing or incomplete build manifest")
-        manifest = manifest or {}
+        manifest = manifest if isinstance(manifest, dict) else {}
     if manifest.get("commit") != commit or manifest.get("platform") != "linux/amd64":
         reasons.append("build manifest commit/platform mismatch")
     for stage in REQUIRED:
-        conclusion = needs.get(stage, {}).get("result", "missing")
+        job = needs.get(stage)
+        conclusion = job.get("result", "missing") if isinstance(job, dict) else "missing"
         report = reports.get(stage)
         if conclusion != "success":
             reasons.append(f"{stage}: job {conclusion}")
@@ -35,6 +38,7 @@ def evaluate(needs, reports, manifest, commit, run_id):
         if report.get("status") != "success":
             reasons.append(f"{stage}: report is not successful")
         tests = report.get("tests", {})
+        tests = tests if isinstance(tests, dict) else {}
         if stage in ("unit", "integration", "e2e"):
             if not isinstance(tests.get("total"), int) or tests["total"] <= 0:
                 reasons.append(f"{stage}: no test evidence")
@@ -43,7 +47,8 @@ def evaluate(needs, reports, manifest, commit, run_id):
         if stage == "fuzz" and report.get("fuzz_targets") != 4:
             reasons.append("fuzz: required targets missing")
         if stage in ("build", "security", "e2e"):
-            if any(report.get("artifact", {}).get(k) != manifest.get(k) for k in ARTIFACT_FIELDS):
+            artifact = report.get("artifact")
+            if not isinstance(artifact, dict) or any(artifact.get(k) != manifest.get(k) for k in ARTIFACT_FIELDS):
                 reasons.append(f"{stage}: artifact mismatch")
         if stage == "unit":
             coverage = report.get("coverage_percent")
@@ -72,6 +77,7 @@ def main():
     for path in root.glob("**/stage.json"):
         try:
             report = json.loads(path.read_text(encoding="utf-8"))
+            if not isinstance(report, dict): raise ValueError("report must be an object")
             stage = report["stage"]
             if stage in reports:
                 errors.append("duplicate report: " + stage)
