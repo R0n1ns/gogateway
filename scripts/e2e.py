@@ -42,7 +42,7 @@ class Environment:
     def up(self):
         image_id = command(["docker", "image", "inspect", self.image, "--format", "{{.Id}}"]).stdout.strip()
         self.started = True
-        self.compose("up", "-d", "--no-build", timeout=240)
+        self.compose("up", "-d", "--no-build", timeout=420)
         self.public, self.admin = self.url("gateforge", 8080), self.url("gateforge", 9090)
         self.wait_ready()
         actual = command(["docker", "inspect", self.compose("ps", "-q", "gateforge").stdout.strip(),

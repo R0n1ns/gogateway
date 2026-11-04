@@ -26,6 +26,7 @@ services:
       POSTGRES_USER: gateforge
       POSTGRES_PASSWORD: test-password
       POSTGRES_DB: gateforge
+      POSTGRES_INITDB_ARGS: --no-sync
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U gateforge -d gateforge"]
       interval: 1s
