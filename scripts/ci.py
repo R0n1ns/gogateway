@@ -1,5 +1,6 @@
 """Stage runner shared by CI and local verification; always writes stage.json."""
 import argparse
+from contextlib import ExitStack
 import hashlib
 import json
 import os
@@ -58,10 +59,12 @@ class Stage:
         self.report = dict(schema_version=1, stage=name, commit=os.getenv("GITHUB_SHA") or git_sha(),
                            run_id=os.getenv("GITHUB_RUN_ID", "local") + ":" + os.getenv("GITHUB_RUN_ATTEMPT", "1"), status="failure", tests=dict(total=0, failed=0, skipped=0))
 
-    def run(self, args, log, timeout=600, allowed=(0,)):
+    def run(self, args, log, timeout=600, allowed=(0,), separate_stderr=False):
         print("Running:", " ".join(map(str, args)), flush=True)
-        with (self.path / log).open("w", encoding="utf-8") as stream:
-            result = subprocess.run(args, cwd=ROOT, stdout=stream, stderr=subprocess.STDOUT, timeout=timeout)
+        with ExitStack() as files:
+            stream = files.enter_context((self.path / log).open("w", encoding="utf-8"))
+            stderr = files.enter_context((self.path / (log+".stderr.log")).open("w", encoding="utf-8")) if separate_stderr else subprocess.STDOUT
+            result = subprocess.run(args, cwd=ROOT, stdout=stream, stderr=stderr, timeout=timeout)
         if result.returncode not in allowed:
             raise RuntimeError(f"{log}: command exited {result.returncode}")
         return (self.path / log).read_text(encoding="utf-8", errors="replace")
@@ -138,12 +141,12 @@ class Stage:
         reachable = re.search(r"Your code is affected by (\d+) vulnerabilit", vulnerability_output)
         self.report["blocking_findings"] += int(reachable.group(1)) if reachable else 0
         self.run(["gosec", "-fmt=json", "-out=" + str(self.path / "gosec.json"), "-severity=high", "./..."], "gosec.log", allowed=(0, 1))
-        source = json.loads((self.path / "gosec.json").read_text())
+        source = json.loads((self.path / "gosec.json").read_text(encoding="utf-8"))
         if source.get("Golang errors"): raise RuntimeError("gosec analysis errors")
         self.report["blocking_findings"] += len(source.get("Issues") or [])
         self.run(["docker", "run", "--rm", "-v", str(ARTIFACTS / "build") + ":/scan:ro",
-                  "anchore/grype:v0.120.1", "docker-archive:/scan/image.tar", "-o", "json"], "grype.json", timeout=900)
-        scan = json.loads((self.path / "grype.json").read_text())
+                  "anchore/grype:v0.120.1", "docker-archive:/scan/image.tar", "-o", "json"], "grype.json", timeout=900, separate_stderr=True)
+        scan = json.loads((self.path / "grype.json").read_text(encoding="utf-8"))
         matches = scan["matches"]
         self.report["findings"] = [{"id": m["vulnerability"]["id"], "severity": m["vulnerability"]["severity"],
                                     "fix": m["vulnerability"].get("fix", {}), "package": m["artifact"]["name"]} for m in matches]
@@ -153,7 +156,7 @@ class Stage:
             paths = list((self.path / "codeql").glob("*.sarif"))
             if not paths: raise RuntimeError("CodeQL report absent")
             for path in paths:
-                for run in json.loads(path.read_text())["runs"]:
+                for run in json.loads(path.read_text(encoding="utf-8"))["runs"]:
                     rules = {r["id"]: r for r in run["tool"]["driver"].get("rules", [])}
                     for finding in run.get("results", []):
                         rule = rules.get(finding.get("ruleId"), {})

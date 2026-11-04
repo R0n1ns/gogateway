@@ -28,7 +28,7 @@ def main():
         ("fuzz", [sys.executable, "scripts/ci.py", "fuzz"], 240),
         ("build", [sys.executable, "scripts/ci.py", "build"], 900),
         ("security", [sys.executable, "scripts/ci.py", "security"], 900),
-        ("load", [sys.executable, "scripts/load_test.py", "--duration", "10", "--warmup", "3", "--repeats", "1", "--concurrency", "1", "8", "--output", str(OUT/"load")], 300),
+        ("load", [sys.executable, "scripts/load_test.py", "--image", os.getenv("GATEFORGE_TEST_IMAGE", "gateforge:local"), "--duration", "10", "--warmup", "3", "--repeats", "1", "--concurrency", "1", "8", "--output", str(OUT/"load")], 300),
     ]
     results = dict(commit=commit, started_at=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), checks=[])
     if only and (OUT/"verification.json").exists():
