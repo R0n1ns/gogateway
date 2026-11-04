@@ -1,0 +1,11 @@
+--- a/internal/config/defaults.go
++++ b/internal/config/defaults.go
+@@ -14,7 +14,7 @@
+ 	defaultDuration(&c.Public.IdleTimeout, time.Minute)
+ 	defaultDuration(&c.Admin.ReadTimeout, 5*time.Second)
+ 	defaultDuration(&c.Admin.WriteTimeout, 10*time.Second)
+-	defaultDuration(&c.Admin.IdleTimeout, 30*time.Second)
++	defaultDuration(&c.Admin.IdleTimeout, 45*time.Second)
+ 	defaultDuration(&c.Runtime.ShutdownTimeout, 10*time.Second)
+ 	if c.Runtime.MaxConfigBytes == 0 {
+ 		c.Runtime.MaxConfigBytes = 1 << 20

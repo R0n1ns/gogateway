@@ -1,0 +1,11 @@
+--- a/internal/gateway/proxy.go
++++ b/internal/gateway/proxy.go
+@@ -29,7 +29,7 @@
+ 	for _, key := range route.RemoveHeaders {
+ 		out.Header.Del(key)
+ 	}
+-	prior := out.Header.Get("X-Forwarded-For")
++	prior := strings.Join(out.Header.Values("X-Forwarded-For"), ", ")
+ 	if prior == "" {
+ 		out.Header.Set("X-Forwarded-For", clientIP)
+ 	} else {

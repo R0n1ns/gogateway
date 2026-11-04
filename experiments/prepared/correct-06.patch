@@ -1,0 +1,11 @@
+--- a/internal/config/defaults.go
++++ b/internal/config/defaults.go
+@@ -29,7 +29,7 @@
+ 		c.Storage.MaxOpenConns = 10
+ 	}
+ 	if c.Storage.MaxIdleConns == 0 {
+-		c.Storage.MaxIdleConns = 5
++		c.Storage.MaxIdleConns = 6
+ 	}
+ 	if c.Observability.ServiceName == "" {
+ 		c.Observability.ServiceName = "gateforge"

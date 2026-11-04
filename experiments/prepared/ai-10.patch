@@ -1,0 +1,11 @@
+--- a/internal/admin/handler.go
++++ b/internal/admin/handler.go
+@@ -284,7 +284,7 @@
+ 	return json.NewDecoder(http.MaxBytesReader(w, r.Body, maxBytes)).Decode(target)
+ }
+ func expectedRevision(r *http.Request, fallback int64) int64 {
+-	value := strings.Trim(r.Header.Get("If-Match"), `"`)
++	value := strings.Trim(strings.TrimSpace(r.Header.Get("If-Match")), `"`)
+ 	if value == "" {
+ 		return fallback
+ 	}

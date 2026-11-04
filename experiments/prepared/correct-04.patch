@@ -1,0 +1,11 @@
+--- a/internal/config/defaults.go
++++ b/internal/config/defaults.go
+@@ -11,7 +11,7 @@
+ func (c *Config) Defaults() {
+ 	defaultDuration(&c.Public.ReadTimeout, 10*time.Second)
+ 	defaultDuration(&c.Public.WriteTimeout, 30*time.Second)
+-	defaultDuration(&c.Public.IdleTimeout, time.Minute)
++	defaultDuration(&c.Public.IdleTimeout, 2*time.Minute)
+ 	defaultDuration(&c.Admin.ReadTimeout, 5*time.Second)
+ 	defaultDuration(&c.Admin.WriteTimeout, 10*time.Second)
+ 	defaultDuration(&c.Admin.IdleTimeout, 30*time.Second)

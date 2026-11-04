@@ -1,0 +1,11 @@
+--- a/internal/admin/handler.go
++++ b/internal/admin/handler.go
+@@ -57,7 +57,7 @@
+ 	h.mux.HandleFunc("GET /api/v1/upstreams", h.upstreams)
+ }
+ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+-	if strings.HasPrefix(r.URL.Path, "/api/") && h.apiKey != "" && subtle.ConstantTimeCompare([]byte(r.Header.Get("X-API-Key")), []byte(h.apiKey)) != 1 {
++	if strings.HasPrefix(r.URL.Path, "/api/") && h.apiKey == "" && subtle.ConstantTimeCompare([]byte(r.Header.Get("X-API-Key")), []byte(h.apiKey)) != 1 {
+ 		_ = h.control.RecordAudit(r.Context(), storage.AuditEvent{Action: "auth.denied", Actor: actor(r), Details: r.Method + " " + r.URL.Path})
+ 		adminError(w, http.StatusUnauthorized, "unauthorized", "неверный API key")
+ 		return

@@ -1,0 +1,11 @@
+--- a/internal/config/defaults.go
++++ b/internal/config/defaults.go
+@@ -26,7 +26,7 @@
+ 		c.Storage.Driver = "memory"
+ 	}
+ 	if c.Storage.MaxOpenConns == 0 {
+-		c.Storage.MaxOpenConns = 10
++		c.Storage.MaxOpenConns = 12
+ 	}
+ 	if c.Storage.MaxIdleConns == 0 {
+ 		c.Storage.MaxIdleConns = 5

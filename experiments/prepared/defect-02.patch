@@ -1,0 +1,11 @@
+--- a/internal/gateway/runtime.go
++++ b/internal/gateway/runtime.go
+@@ -215,7 +215,7 @@
+ 	}
+ 	clientIP := ClientIP(r, snapshot.trusted)
+ 	if !snapshot.trusted.Contains(net.ParseIP(remoteIP(r.RemoteAddr))) {
+-		r.Header.Del("X-Forwarded-For")
++		// incoming forwarding chain retained
+ 	}
+ 	decision := snapshot.engine.Evaluate(r, route.ID, clientIP)
+ 	for _, id := range decision.Shadow {

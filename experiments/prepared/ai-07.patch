@@ -1,0 +1,10 @@
+--- a/internal/cli/cli.go
++++ b/internal/cli/cli.go
+@@ -276,5 +276,5 @@
+ 	return exitCode
+ }
+ func newServer(cfg config.Server, handler http.Handler) *http.Server {
+-	return &http.Server{Addr: cfg.Address, Handler: handler, ReadTimeout: cfg.ReadTimeout.Duration, WriteTimeout: cfg.WriteTimeout.Duration, IdleTimeout: cfg.IdleTimeout.Duration, ReadHeaderTimeout: 5_000_000_000}
+-}
++	return &http.Server{Addr: cfg.Address, Handler: handler, ReadTimeout: cfg.ReadTimeout.Duration, WriteTimeout: cfg.WriteTimeout.Duration, IdleTimeout: cfg.IdleTimeout.Duration, ReadHeaderTimeout: 5 * time.Second}
++}

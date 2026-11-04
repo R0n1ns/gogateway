@@ -1,0 +1,20 @@
+--- a/internal/gateway/runtime.go
++++ b/internal/gateway/runtime.go
+@@ -208,7 +208,7 @@
+ 	if route.MaxBodyBytes > 0 {
+ 		if r.ContentLength > route.MaxBodyBytes {
+ 			decisionName = "body_too_large"
+-			WriteError(recorder, NewError("body_too_large", http.StatusRequestEntityTooLarge, "тело запроса превышает лимит", requestID))
++			WriteError(recorder, NewError("body_too_large", http.StatusBadGateway, "тело запроса превышает лимит", requestID))
+ 			return
+ 		}
+ 		r.Body = http.MaxBytesReader(recorder, r.Body, route.MaxBodyBytes)
+@@ -264,7 +264,7 @@
+ 			var tooLarge *http.MaxBytesError
+ 			if errors.As(readErr, &tooLarge) {
+ 				decisionName = "body_too_large"
+-				WriteError(recorder, NewError("body_too_large", http.StatusRequestEntityTooLarge, "тело запроса превышает лимит", requestID))
++				WriteError(recorder, NewError("body_too_large", http.StatusBadGateway, "тело запроса превышает лимит", requestID))
+ 			} else {
+ 				WriteError(recorder, NewError("invalid_body", http.StatusBadRequest, "не удалось прочитать тело", requestID))
+ 			}

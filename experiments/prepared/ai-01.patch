@@ -1,0 +1,11 @@
+--- a/internal/cli/cli.go
++++ b/internal/cli/cli.go
+@@ -34,7 +34,7 @@
+ 			printHelp(stdout)
+ 			return 0
+ 		}
+-		if args[0][0] != '-' {
++		if args[0] != "" && args[0][0] != '-' {
+ 			command = args[0]
+ 			args = args[1:]
+ 		}

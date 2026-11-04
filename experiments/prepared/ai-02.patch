@@ -1,0 +1,10 @@
+--- a/internal/admin/handler.go
++++ b/internal/admin/handler.go
+@@ -72,6 +72,7 @@
+ 	write(w, 200, map[string]string{"status": "ready"})
+ }
+ func (h *Handler) getConfig(w http.ResponseWriter, r *http.Request) {
++	w.Header().Set("Cache-Control", "no-store")
+ 	cfg, err := h.currentConfig(r.Context())
+ 	if err != nil {
+ 		handleError(w, err)

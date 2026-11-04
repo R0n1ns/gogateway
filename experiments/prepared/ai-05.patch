@@ -1,0 +1,10 @@
+--- a/internal/admin/handler.go
++++ b/internal/admin/handler.go
+@@ -310,6 +310,7 @@
+ }
+ func parseInt64(value string) int64 { parsed, _ := strconv.ParseInt(value, 10, 64); return parsed }
+ func write(w http.ResponseWriter, status int, value any) {
++	w.Header().Set("X-Content-Type-Options", "nosniff")
+ 	w.Header().Set("Content-Type", "application/json")
+ 	w.WriteHeader(status)
+ 	_ = json.NewEncoder(w).Encode(value)

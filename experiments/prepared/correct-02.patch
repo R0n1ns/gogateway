@@ -1,0 +1,11 @@
+--- a/internal/upstream/pool.go
++++ b/internal/upstream/pool.go
+@@ -70,7 +70,7 @@
+ 		DialContext:           (&net.Dialer{Timeout: 5 * time.Second, KeepAlive: 30 * time.Second}).DialContext,
+ 		ForceAttemptHTTP2:     true,
+ 		MaxIdleConns:          256,
+-		MaxIdleConnsPerHost:   64,
++		MaxIdleConnsPerHost:   128,
+ 		IdleConnTimeout:       90 * time.Second,
+ 		TLSHandshakeTimeout:   5 * time.Second,
+ 		ExpectContinueTimeout: time.Second,
