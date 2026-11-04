@@ -61,7 +61,7 @@ def execute(manifest, limit=None):
         result_path = output / (key + ".json")
         if result_path.exists(): continue
         directory = output / (key + "-source")
-        directory.mkdir()
+        directory.mkdir(exist_ok=True)
         archive = directory / "source.zip"
         subprocess.run(["git", "-c", "safe.directory="+str(ROOT), "archive", "--format=zip", "-o", str(archive), manifest["base_commit"]], cwd=ROOT, check=True)
         with zipfile.ZipFile(archive) as bundle: bundle.extractall(directory)
@@ -79,9 +79,15 @@ def execute(manifest, limit=None):
                         destination.write_bytes(baseline.read(name))
         commands = [["go", "vet", "./..."], ["golangci-lint", "run"], ["go", "test", "./internal/..."]]
         if profile == "B":
+            commands[2] = ["go", "test", "-race", "-covermode=atomic", "-coverprofile=coverage.out", "./internal/..."]
+            commands += [["go", "run", "./tools/coveragecheck", "-profile", "coverage.out", "-min", "80"], ["go", "run", "./cmd/gateforge", "validate", "-config", "configs/gateforge.json"], ["go", "run", "./cmd/gateforge", "test", "-config", "configs/gateforge.json", "-cases", "configs/policy-tests.json"]]
             commands += [["go", "test", "-race", "./tests/...", "./tools/..."], ["go", "test", "-count=1", "-run", "Integration", "./internal/storage"], ["go", "test", "./internal/router", "-run=^$", "-fuzz=FuzzRouteMatch", "-fuzztime=5s"], ["go", "test", "./internal/policy", "-run=^$", "-fuzz=FuzzStringMatcher", "-fuzztime=5s"], ["go", "build", "./cmd/..."], ["govulncheck", "./..."]]
         if profile == "C":
             commands = [[sys.executable, "scripts/ci.py", stage] for stage in ("static", "unit", "integration", "fuzz", "build", "security", "e2e")]
+            needs_path = directory / "artifacts/needs.json"
+            needs_path.parent.mkdir(parents=True, exist_ok=True)
+            needs_path.write_text(json.dumps({name: {"result": "success"} for name in ("static", "unit", "integration", "fuzz", "build", "security", "e2e")}))
+            commands.append([sys.executable, "scripts/quality_gate.py", "--needs", str(needs_path), "--commit", manifest["base_commit"], "--run-id", key + ":1"])
         started = time.monotonic()
         result = dict(case_id=case["id"], group=case["group"], label=case["label"], profile=profile, repeat=repeat, base_commit=manifest["base_commit"], patch_sha256=case["patch_sha256"], status="accepted", first_feedback_seconds=None, cpu_seconds=None)
         environment = dict(os.environ, GITHUB_SHA=manifest["base_commit"], GITHUB_RUN_ID=key, GITHUB_RUN_ATTEMPT="1", PYTEST_DISABLE_PLUGIN_AUTOLOAD="1")
@@ -90,7 +96,9 @@ def execute(manifest, limit=None):
                 with (output / f"{key}-{index}.log").open("w", encoding="utf-8") as log:
                     completed = subprocess.run(command, cwd=directory, env=environment, stdout=log, stderr=subprocess.STDOUT, timeout=1800)
                 if completed.returncode:
-                    result.update(status="rejected", failed_command=command, first_feedback_seconds=time.monotonic()-started)
+                    text = (output / f"{key}-{index}.log").read_text(encoding="utf-8", errors="replace").lower()
+                    infrastructure = any(marker in text for marker in ("error during connect", "connection refused", "could not resolve", "no such host", "database.*does not exist", "integration tests absent/skipped", "gateforge_test_database", "failed to download", "tls handshake timeout"))
+                    result.update(status="infrastructure_error" if infrastructure else "rejected", failed_command=command, first_feedback_seconds=time.monotonic()-started)
                     break
             except (OSError, subprocess.TimeoutExpired) as error:
                 result.update(status="infrastructure_error", error=str(error), first_feedback_seconds=time.monotonic()-started)
