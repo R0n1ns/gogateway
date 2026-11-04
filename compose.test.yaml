@@ -30,7 +30,7 @@ services:
       test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U gateforge -d gateforge"]
       interval: 1s
       timeout: 3s
-      retries: 60
+      retries: 180
     volumes: ["database:/var/lib/postgresql"]
 volumes:
   database:

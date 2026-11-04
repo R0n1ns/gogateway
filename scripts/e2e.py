@@ -14,8 +14,11 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def command(args, *, env=None, check=True, timeout=180):
-    return subprocess.run(args, cwd=ROOT, env=env, check=check, text=True,
+    result = subprocess.run(args, cwd=ROOT, env=env, check=False, text=True,
                           encoding="utf-8", errors="replace", capture_output=True, timeout=timeout)
+    if check and result.returncode:
+        raise RuntimeError(f"{args[0]} exited {result.returncode}: {result.stderr[-4000:]}")
+    return result
 
 
 class Environment:
