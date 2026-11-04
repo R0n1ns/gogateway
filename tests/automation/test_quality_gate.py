@@ -23,6 +23,27 @@ def test_quality_gate_accepts_complete_evidence():
     assert evaluate(needs, reports, manifest, "abc", "1")["decision"] == "accept"
 
 
+@pytest.mark.parametrize("bad", [None, [], "invalid", 0])
+def test_quality_gate_rejects_malformed_top_level_evidence(bad):
+    needs, reports, manifest = evidence()
+    assert evaluate(bad, reports, manifest, "abc", "1")["decision"] == "reject"
+    assert evaluate(needs, bad, manifest, "abc", "1")["decision"] == "reject"
+    assert evaluate(needs, reports, bad, "abc", "1")["decision"] == "reject"
+
+
+@pytest.mark.parametrize("field", ["tests", "artifact"])
+def test_quality_gate_rejects_malformed_nested_evidence(field):
+    needs, reports, manifest = evidence()
+    reports["e2e"][field] = None
+    assert evaluate(needs, reports, manifest, "abc", "1")["decision"] == "reject"
+
+
+def test_boolean_is_not_a_test_count():
+    needs, reports, manifest = evidence()
+    reports["e2e"]["tests"]["total"] = True
+    assert evaluate(needs, reports, manifest, "abc", "1")["decision"] == "reject"
+
+
 @pytest.mark.parametrize("stage", REQUIRED)
 @pytest.mark.parametrize("result", ["failure", "cancelled", "skipped", "neutral", "missing"])
 def test_quality_gate_rejects_non_success(stage, result):

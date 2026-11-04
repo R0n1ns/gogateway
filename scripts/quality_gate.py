@@ -33,14 +33,14 @@ def evaluate(needs, reports, manifest, commit, run_id):
                 or report.get("commit") != commit or report.get("run_id") != run_id):
             reasons.append(f"{stage}: report identity mismatch")
         duration = report.get("duration_seconds")
-        if not isinstance(duration, (int, float)) or not math.isfinite(duration) or duration < 0:
+        if type(duration) not in (int, float) or not math.isfinite(duration) or duration < 0:
             reasons.append(f"{stage}: invalid duration")
         if report.get("status") != "success":
             reasons.append(f"{stage}: report is not successful")
         tests = report.get("tests", {})
         tests = tests if isinstance(tests, dict) else {}
         if stage in ("unit", "integration", "e2e"):
-            if not isinstance(tests.get("total"), int) or tests["total"] <= 0:
+            if type(tests.get("total")) is not int or tests["total"] <= 0:
                 reasons.append(f"{stage}: no test evidence")
             if tests.get("skipped") != 0 or tests.get("failed") != 0:
                 reasons.append(f"{stage}: skipped/failed tests or missing counts")
@@ -52,7 +52,7 @@ def evaluate(needs, reports, manifest, commit, run_id):
                 reasons.append(f"{stage}: artifact mismatch")
         if stage == "unit":
             coverage = report.get("coverage_percent")
-            if not isinstance(coverage, (int, float)) or not math.isfinite(coverage) or not 80 <= coverage <= 100:
+            if type(coverage) not in (int, float) or not math.isfinite(coverage) or not 80 <= coverage <= 100:
                 reasons.append("unit: coverage below 80% or missing")
         if stage == "security":
             if report.get("blocking_findings") != 0 or report.get("scanners_complete") is not True:
@@ -79,6 +79,7 @@ def main():
             report = json.loads(path.read_text(encoding="utf-8"))
             if not isinstance(report, dict): raise ValueError("report must be an object")
             stage = report["stage"]
+            if not isinstance(stage, str): raise ValueError("stage must be a string")
             if stage in reports:
                 errors.append("duplicate report: " + stage)
             reports[stage] = report

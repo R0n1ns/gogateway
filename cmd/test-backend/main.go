@@ -49,7 +49,7 @@ func (f *fixture) serve(w http.ResponseWriter, r *http.Request) {
 	}
 	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 8<<20))
 	if err != nil {
-		http.Error(w, "body too large", 413)
+		http.Error(w, "body too large", http.StatusRequestEntityTooLarge)
 		return
 	}
 	entry := record{f.name, r.Method, r.URL.Path, r.URL.RawQuery, r.Header.Clone(), body}
