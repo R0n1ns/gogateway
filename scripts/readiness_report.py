@@ -21,14 +21,23 @@ def create():
             checks[name] = dict(status="passed" if stage.get("status") == "success" else "failed", duration_seconds=stage.get("duration_seconds"), commit=stage.get("commit"))
     integration_log = EVIDENCE / "integration.log"
     if integration_log.exists():
-        text = integration_log.read_text(encoding="utf-8", errors="replace")
+        raw = integration_log.read_bytes()
+        text = raw.decode("utf-16" if raw.startswith((b"\xff\xfe", b"\xfe\xff")) else "utf-8", errors="replace")
         events = []
         for line in text.splitlines():
-            try: events.append(json.loads(line))
+            try:
+                event = json.loads(line)
+                if isinstance(event, dict): events.append(event)
             except ValueError: pass
         passed = any(e.get("Action") == "pass" and not e.get("Test") for e in events)
         if passed: checks["integration"] = dict(status="passed")
-    names = {"automation": "Quality Gate", "unit": "Go unit и race", "vet": "Go vet", "lint": "Lint", "integration": "PostgreSQL integration", "fuzz": "Fuzz", "build": "Сборка образа", "security": "Security", "e2e": "Внешние E2E", "release": "Обновление и возврат", "load": "Нагрузка"}
+    load_path = EVIDENCE / "load/load.json"
+    if load_path.exists():
+        load = json.loads(load_path.read_text(encoding="utf-8"))
+        expected = 2 * len(load.get("parameters", {}).get("concurrency", [])) * load.get("parameters", {}).get("repeats", 0)
+        if expected and len(load.get("measurements", [])) == expected and all(row.get("resources") for row in load["measurements"]) and checks.get("load", {}).get("status") == "passed":
+            checks["load"] = {**checks["load"], "status": "passed"}
+    names = {"automation": "Тесты Quality Gate", "unit": "Go unit и race", "vet": "Go vet", "lint": "Lint", "integration": "PostgreSQL integration", "fuzz": "Fuzz", "build": "Сборка образа", "security": "Security", "e2e": "Внешние E2E", "release": "Обновление и возврат", "load": "Нагрузка", "admission": "Итоговый допуск CI"}
     for key, title in names.items():
         result = checks.get(key, {})
         status = {"passed": "Пройдено", "failed": "Ошибка", "infrastructure_error": "Ошибка инфраструктуры"}.get(result.get("status"), "Не подтверждено")
@@ -39,6 +48,7 @@ def create():
     environment_path = EVIDENCE / "e2e/environment.json"
     build_manifest_path = ROOT / "artifacts/build/manifest.json"
     artifact_notes = []
+    artifact_consistent = False
     if environment_path.exists():
         environment = json.loads(environment_path.read_text(encoding="utf-8"))
         artifact_notes.append("Образ E2E: " + environment["image_id"] + ".")
@@ -48,13 +58,25 @@ def create():
             if environment["image_id"] != manifest["image_id"]:
                 accepted = False
                 artifact_notes.append("E2E и новая сборка используют разные образы. Допуск новой сборки не подтверждён.")
-    conclusion = "Готовность подтверждена в пределах выполненных испытаний." if accepted else "Полная готовность продукта к выпуску не подтверждена. Прототип может использоваться для демонстрации только с перечисленными ограничениями."
+            else:
+                release_path = EVIDENCE / "release/release.json"
+                if release_path.exists():
+                    release = json.loads(release_path.read_text(encoding="utf-8"))
+                    candidate_steps = [s for s in release.get("steps", []) if s.get("step") == "candidate"]
+                    artifact_consistent = release.get("status") == "success" and any(s.get("image_id") == manifest["image_id"] for s in candidate_steps)
+    functional_ready = artifact_consistent and all(checks.get(k, {}).get("status") == "passed" for k in ("automation", "unit", "vet", "lint", "integration", "fuzz", "build", "e2e", "release"))
+    conclusion = "Готовность подтверждена в пределах выполненных испытаний." if accepted else "Функциональные испытания подтверждают готовность к учебной демонстрации. Допуск к выпуску не подтверждён из-за результатов безопасности и отсутствия итогового допуска CI." if functional_ready else "Полная готовность продукта к выпуску не подтверждена. Прототип может использоваться для демонстрации только с перечисленными ограничениями."
     counts = []
     for path, title in [(EVIDENCE/"automation.xml", "Quality Gate"), (EVIDENCE/"e2e/junit.xml", "E2E")]:
         if path.exists():
             suites = list(ET.parse(path).getroot().iter("testsuite"))
             values = {k: sum(int(s.get(k, 0)) for s in suites) for k in ("tests", "failures", "errors", "skipped")}
             counts.append(f"{title}: всего {values['tests']}, failures {values['failures']}, errors {values['errors']}, пропусков {values['skipped']}.")
+    first_e2e = EVIDENCE/"e2e-first-pass/junit.xml"
+    if first_e2e.exists():
+        suites = list(ET.parse(first_e2e).getroot().iter("testsuite"))
+        if all(int(s.get(k, 0)) == 0 for s in suites for k in ("errors", "failures", "skipped")):
+            counts.append("Предыдущий последовательный E2E-прогон также прошёл без ошибок и пропусков. Его исходный JUnit сохранён отдельно в e2e-first-pass/junit.xml.")
     go_tests = {}
     unit_path = EVIDENCE / "unit.log"
     if unit_path.exists():
@@ -91,10 +113,39 @@ def create():
         if identifiers:
             sections.insert(3, ("Результаты проверки безопасности", [
                 f"Локальный govulncheck завершился отказом и перечислил {len(identifiers)} достижимых уязвимостей. Источник: artifacts/security/govulncheck.log. Это блокирует положительное решение о выпуске.",
-                "Проверка исходного кода использовала локальный Go 1.26.5, тогда как собранный образ использует закреплённый Go 1.26.9. Число находок локального анализа нельзя автоматически переносить на контейнер. Для окончательного решения нужны повторный анализ на единой версии toolchain и завершённое сканирование образа.",
+                "Проверка исходного кода использовала локальный Go 1.26.5, тогда как собранный образ использует закреплённый Go 1.26.9. Число находок локального анализа нельзя автоматически переносить на контейнер. Достижимость после обновления зависимостей необходимо проверять на единой версии toolchain.",
                 "Среди находок в зависимостях: golang.org/x/text, golang.org/x/net, OpenTelemetry и gRPC. Журнал содержит исправленные версии. Обновление зависимостей и Go требует отдельного повторного регрессионного прогона; факт отсутствия таких уязвимостей здесь не заявляется.",
                 "Идентификаторы находок: " + ", ".join(identifiers) + ".",
             ]))
+    security_stage_path = ROOT / "artifacts/security/stage.json"
+    if security_stage_path.exists():
+        security_stage = json.loads(security_stage_path.read_text(encoding="utf-8"))
+        if security_stage.get("scanners_complete"):
+            matches = security_stage.get("findings", [])
+            blocking = [f for f in matches if f["severity"].lower() in ("high", "critical") and f.get("fix", {}).get("versions")]
+            sections.insert(4, ("Сканирование итогового образа", [
+                f"Grype завершил анализ того же образа, на котором выполнены E2E. Получено {len(matches)} совпадений пакетов и уязвимостей; {len(blocking)} из них блокируют выпуск по политике исправимых HIGH и CRITICAL. Счётчики разных сканеров не являются количеством уникальных уязвимостей.",
+                "Блокирующие совпадения: " + "; ".join(f["id"]+" в "+f["package"]+" ("+f["severity"]+")" for f in blocking) + ".",
+                "Первый Docker pull добавил служебные сообщения к stdout. При обработке доказательств они отделены от JSON; исходный вывод сохранён в grype.transport.log. Для следующих запусков stdout и stderr сканера уже разделены в stage runner. Решение об отказе сохранено.",
+            ]))
+    gosec_path = ROOT / "artifacts/security/gosec.json"
+    if gosec_path.exists():
+        scan = json.loads(gosec_path.read_text(encoding="utf-8"))
+        issues = scan.get("Issues") or []
+        if issues:
+            sections.insert(-1, ("Находки статического анализа", [
+                f"gosec сообщил о {len(issues)} находках высокой серьёзности. Они являются сигналами анализатора и не приравниваются автоматически к подтверждённым дефектам.",
+                "В отчёте присутствуют G115 для преобразований чисел, G404 для генератора выбора backend и G704 для управляющего CLI тестового backend. Требуется оценить границы индексов, назначение случайности и доступность управляющего интерфейса. Тестовый backend не входит в образ шлюза. Исключения для подавления находок не добавлялись.",
+                "До завершения контекстной оценки и повторного полного security-прогона положительный допуск не заявляется. Полные места и описание: artifacts/security/gosec.json.",
+            ]))
+    if load_path.exists():
+        load = json.loads(load_path.read_text(encoding="utf-8"))
+        parameters = load.get("parameters", {})
+        paragraphs = [f"Диагностический прогон с замкнутым генератором: прогрев {parameters.get('warmup')} с, измерение {parameters.get('duration')} с, повторов {parameters.get('repeats')}, concurrency {parameters.get('concurrency')}, POST с телом 256 байт. Это не полный сравнительный эксперимент и не оценка предельной производительности."]
+        for row in load.get("measurements", []):
+            paragraphs.append(f"{row['endpoint']}, concurrency {row['concurrency']}: {row['throughput']:.1f} запросов/с, p95 {row['p95_ms']:.2f} мс, p99 {row['p99_ms']:.2f} мс, ошибок {row['errors']} из {row['requests']}.")
+        paragraphs.append("CPU, память и остальные исходные измерения контейнеров сохранены в artifacts/readiness-current/load/load.json.")
+        sections.insert(-1, ("Диагностическая нагрузка", paragraphs))
     title = "Отчёт о готовности продукта GateForge для курсовой работы"
     md = ["# "+title, "", conclusion, "", "| Проверка | Результат | Секунды | Источник |", "|---|---|---:|---|"]
     md += ["| "+" | ".join(row)+" |" for row in rows]
