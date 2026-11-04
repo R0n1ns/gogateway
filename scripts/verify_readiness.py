@@ -38,7 +38,7 @@ def main():
     environment = dict(os.environ, PYTEST_DISABLE_PLUGIN_AUTOLOAD="1", GOMAXPROCS="2")
     for name, command, timeout in commands:
         started = time.monotonic()
-        record = dict(name=name, command=command, status="not_run")
+        record = dict(name=name, command=command, status="not_run", commit=commit)
         try:
             with (OUT/(name+".log")).open("w", encoding="utf-8") as stream:
                 result = subprocess.run(command, cwd=ROOT, env=environment, stdout=stream, stderr=subprocess.STDOUT, timeout=timeout)

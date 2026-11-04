@@ -101,6 +101,7 @@ def main():
             return 0
         env = dict(environment.env, E2E_STATE=json.dumps(state), PYTEST_DISABLE_PLUGIN_AUTOLOAD="1")
         result = subprocess.run([sys.executable, "-m", "pytest", "tests/e2e", "-q",
+                                 "--basetemp=" + str(environment.output / ("pytest-"+uuid.uuid4().hex[:8])),
                                  "--junitxml=" + str(environment.output / "junit.xml")],
                                 cwd=ROOT, env=env, timeout=600)
         return result.returncode

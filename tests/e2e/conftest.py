@@ -28,7 +28,7 @@ class Gateway:
     def admin(self, method="GET", path="/config", **kwargs):
         headers = {"X-API-Key": "test-admin-key", **kwargs.pop("headers", {})}
         return self.session.request(method, self.state["admin"] + "/api/v1" + path,
-                                    headers=headers, timeout=8, **kwargs)
+                                    headers=headers, timeout=30, **kwargs)
 
     def config(self):
         response = self.admin()

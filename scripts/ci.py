@@ -3,6 +3,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 from pathlib import Path
 import subprocess
 import sys
@@ -133,7 +134,9 @@ class Stage:
     def security(self):
         self.artifact()
         self.report.update(blocking_findings=0, scanners_complete=False)
-        self.run(["govulncheck", "./..."], "govulncheck.log")
+        vulnerability_output = self.run(["govulncheck", "./..."], "govulncheck.log", allowed=(0, 3))
+        reachable = re.search(r"Your code is affected by (\d+) vulnerabilit", vulnerability_output)
+        self.report["blocking_findings"] += int(reachable.group(1)) if reachable else 0
         self.run(["gosec", "-fmt=json", "-out=" + str(self.path / "gosec.json"), "-severity=high", "./..."], "gosec.log", allowed=(0, 1))
         source = json.loads((self.path / "gosec.json").read_text())
         if source.get("Golang errors"): raise RuntimeError("gosec analysis errors")
