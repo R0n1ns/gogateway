@@ -24,7 +24,7 @@ var ErrNoHealthyUpstream = errors.New("нет доступных upstream")
 type Backend struct {
 	id                 string
 	target             *url.URL
-	weight             int
+	weight             uint64
 	healthy            atomic.Bool
 	active             atomic.Int64
 	mu                 sync.Mutex
@@ -64,13 +64,6 @@ type Pool struct {
 
 func New(route config.Route) (*Pool, error) {
 	pool := &Pool{route: route}
-	var total uint64
-	for _, item := range route.UpstreamPool {
-		if item.Weight < 1 || uint64(item.Weight) > uint64(^uint(0)>>1)-total {
-			return nil, errors.New("upstream weights must be positive and their sum must fit in int")
-		}
-		total += uint64(item.Weight)
-	}
 	pool.transport = &http.Transport{
 		Proxy:                 http.ProxyFromEnvironment,
 		DialContext:           (&net.Dialer{Timeout: 5 * time.Second, KeepAlive: 30 * time.Second}).DialContext,
@@ -82,12 +75,21 @@ func New(route config.Route) (*Pool, error) {
 		ExpectContinueTimeout: time.Second,
 		ResponseHeaderTimeout: route.UpstreamTimeout.Duration,
 	}
+	var total uint64
 	for _, item := range route.UpstreamPool {
+		if item.Weight < 1 {
+			return nil, errors.New("upstream weight must be positive")
+		}
+		weight := uint64(item.Weight)
+		if weight > uint64(^uint(0)>>1)-total {
+			return nil, errors.New("upstream weight sum overflows int")
+		}
+		total += weight
 		target, err := url.Parse(item.URL)
 		if err != nil {
 			return nil, err
 		}
-		backend := &Backend{id: item.ID, target: target, weight: item.Weight}
+		backend := &Backend{id: item.ID, target: target, weight: weight}
 		backend.healthy.Store(true)
 		pool.backends = append(pool.backends, backend)
 	}
@@ -149,16 +151,16 @@ func (p *Pool) Select(r *http.Request) (*Selection, error) {
 }
 
 func (p *Pool) weighted(items []*Backend) *Backend {
-	total := 0
+	var total uint64
 	for _, item := range items {
 		total += item.weight
 	}
-	point := (p.sequence.Add(1) - 1) % uint64(total)
+	point := (p.sequence.Add(1) - 1) % total
 	for _, item := range items {
-		if point < uint64(item.weight) {
+		if point < item.weight {
 			return item
 		}
-		point -= uint64(item.weight)
+		point -= item.weight
 	}
 	return items[0]
 }

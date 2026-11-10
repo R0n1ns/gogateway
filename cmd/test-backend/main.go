@@ -18,6 +18,7 @@ type behavior struct {
 	Status   int   `json:"status"`
 	Statuses []int `json:"statuses"`
 	DelayMS  int   `json:"delay_ms"`
+	Hold     bool  `json:"hold"`
 }
 type record struct {
 	Backend  string      `json:"backend"`
@@ -34,6 +35,7 @@ type fixture struct {
 	active   int
 	records  []record
 	name     string
+	release  chan struct{}
 }
 
 func respond(w http.ResponseWriter, status int, value any) {
@@ -58,11 +60,22 @@ func (f *fixture) serve(w http.ResponseWriter, r *http.Request) {
 	f.count++
 	f.active++
 	b := f.behavior
+	if b.Hold && f.release == nil {
+		f.release = make(chan struct{})
+	}
+	release := f.release
 	if len(f.records) < 1000 {
 		f.records = append(f.records, entry)
 	}
 	f.mu.Unlock()
 	defer func() { f.mu.Lock(); f.active--; f.mu.Unlock() }()
+	if b.Hold {
+		select {
+		case <-release:
+		case <-r.Context().Done():
+			return
+		}
+	}
 	if b.DelayMS > 0 {
 		timer := time.NewTimer(time.Duration(b.DelayMS) * time.Millisecond)
 		defer timer.Stop()
@@ -89,7 +102,18 @@ func (f *fixture) control(w http.ResponseWriter, r *http.Request) {
 	case r.Method == "GET" && r.URL.Path == "/state":
 		respond(w, 200, map[string]any{"count": f.count, "active": f.active, "requests": f.records})
 	case r.Method == "POST" && r.URL.Path == "/reset":
+		if f.release != nil {
+			close(f.release)
+			f.release = nil
+		}
 		f.count, f.records, f.behavior = 0, nil, behavior{}
+		respond(w, 200, map[string]bool{"ok": true})
+	case r.Method == "POST" && r.URL.Path == "/release":
+		f.behavior.Hold = false
+		if f.release != nil {
+			close(f.release)
+			f.release = nil
+		}
 		respond(w, 200, map[string]bool{"ok": true})
 	case r.Method == "PUT" && r.URL.Path == "/behavior":
 		var b behavior
@@ -114,6 +138,10 @@ func (f *fixture) control(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func newControlClient() *http.Client {
+	return &http.Client{CheckRedirect: func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }}
+}
+
 func main() {
 	if len(os.Args) == 4 && os.Args[1] == "ctl" {
 		body, err := io.ReadAll(io.LimitReader(os.Stdin, 65537))
@@ -130,6 +158,8 @@ func main() {
 			target = "http://127.0.0.1:9091/reset"
 		case "/behavior":
 			target = "http://127.0.0.1:9091/behavior"
+		case "/release":
+			target = "http://127.0.0.1:9091/release"
 		default:
 			log.Fatal("unsupported control endpoint")
 		}
@@ -137,7 +167,9 @@ func main() {
 		if err != nil {
 			log.Fatal(err)
 		}
-		response, err := http.DefaultClient.Do(req)
+		client := newControlClient()
+		// #nosec G704 -- URL is selected from literal loopback endpoints above; redirects are disabled. CLI arguments affect only method/body.
+		response, err := client.Do(req)
 		if err != nil {
 			log.Fatal(err)
 		}

@@ -23,7 +23,7 @@ class Gateway:
         self.session.trust_env = False
 
     def request(self, method="GET", path="/api/echo", **kwargs):
-        return self.session.request(method, self.state["public"] + path, timeout=8, **kwargs)
+        return self.session.request(method, self.state["public"] + path, timeout=kwargs.pop("timeout", 8), **kwargs)
 
     def admin(self, method="GET", path="/config", **kwargs):
         headers = {"X-API-Key": "test-admin-key", **kwargs.pop("headers", {})}

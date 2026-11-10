@@ -106,12 +106,16 @@ def test_rate_limit(gateway):
 def test_concurrency_limit(gateway):
     cfg = gateway.config()
     cfg["routes"][0]["max_concurrent"] = 1
+    cfg["routes"][0]["upstream_timeout"] = "30s"
     gateway.apply(cfg)
-    gateway.ctl("PUT", "/behavior", {"delay_ms": 1500})
+    gateway.ctl("PUT", "/behavior", {"hold": True})
     with ThreadPoolExecutor(2) as executor:
-        first = executor.submit(gateway.request)
-        eventually(lambda: gateway.ctl()["active"] == 1)
-        assert gateway.request().status_code == 503
+        first = executor.submit(gateway.request, timeout=30)
+        try:
+            eventually(lambda: gateway.ctl()["active"] == 1)
+            assert gateway.request().status_code == 503
+        finally:
+            gateway.ctl("POST", "/release")
         assert first.result().status_code == 200
     gateway.ctl("PUT", "/behavior", {})
     assert gateway.request().status_code == 200 and gateway.count() == 2
