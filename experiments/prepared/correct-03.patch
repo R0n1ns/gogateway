@@ -1,0 +1,11 @@
+--- a/internal/upstream/pool.go
++++ b/internal/upstream/pool.go
+@@ -71,7 +71,7 @@
+ 		ForceAttemptHTTP2:     true,
+ 		MaxIdleConns:          256,
+ 		MaxIdleConnsPerHost:   64,
+-		IdleConnTimeout:       90 * time.Second,
++		IdleConnTimeout:       120 * time.Second,
+ 		TLSHandshakeTimeout:   5 * time.Second,
+ 		ExpectContinueTimeout: time.Second,
+ 		ResponseHeaderTimeout: route.UpstreamTimeout.Duration,

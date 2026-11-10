@@ -1,4 +1,16 @@
 .RECIPEPREFIX := >
+PYTHON ?= python
+
+.PHONY: e2e-up e2e-test e2e-down
+e2e-up:
+>$(PYTHON) scripts/e2e.py up $(E2E_ARGS)
+
+e2e-test:
+>$(PYTHON) scripts/e2e.py test $(E2E_ARGS)
+
+e2e-down:
+>$(PYTHON) scripts/e2e.py down $(E2E_ARGS)
+
 .PHONY: build test test-race integration cover run validate policy-test fmt vet fuzz bench lint vuln docker-up docker-down
 
 build:
@@ -11,7 +23,7 @@ test-race:
 >go test -race ./...
 
 integration:
->go test -count=1 -run Integration ./internal/storage
+>go test -tags=integration -count=1 -run Integration ./internal/storage
 
 cover:
 >go test -coverprofile=coverage.out ./internal/...
@@ -35,7 +47,9 @@ vet:
 
 fuzz:
 >go test ./internal/router -run=^$$ -fuzz=FuzzRouteMatch -fuzztime=10s
->go test ./internal/policy -run=^$$ -fuzz=FuzzStringMatcher -fuzztime=10s
+>go test ./internal/policy -run=^$$ -fuzz=FuzzStringMatcherPrefix -fuzztime=10s
+>go test ./internal/policy -run=^$$ -fuzz=FuzzStringMatcherExact -fuzztime=10s
+>go test ./internal/policy -run=^$$ -fuzz=FuzzStringMatcherRegex -fuzztime=10s
 
 bench:
 >go test -run=^$$ -bench=. -benchmem ./internal/router ./internal/policy ./internal/ratelimit

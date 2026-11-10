@@ -1,0 +1,35 @@
+schema_version: 1
+seed: 20261012
+repeats: 3
+base_commit: null
+cases:
+  - {id: correct-01, group: correct, label: correct, file: internal/upstream/pool.go, old: 'MaxIdleConns:          256', new: 'MaxIdleConns:          512'}
+  - {id: correct-02, group: correct, label: correct, file: internal/upstream/pool.go, old: 'MaxIdleConnsPerHost:   64', new: 'MaxIdleConnsPerHost:   128'}
+  - {id: correct-03, group: correct, label: correct, file: internal/upstream/pool.go, old: '90 * time.Second', new: '120 * time.Second'}
+  - {id: correct-04, group: correct, label: correct, file: internal/config/defaults.go, old: 'defaultDuration(&c.Public.IdleTimeout, time.Minute)', new: 'defaultDuration(&c.Public.IdleTimeout, 2*time.Minute)'}
+  - {id: correct-05, group: correct, label: correct, file: internal/config/defaults.go, old: 'c.Storage.MaxOpenConns = 10', new: 'c.Storage.MaxOpenConns = 12'}
+  - {id: correct-06, group: correct, label: correct, file: internal/config/defaults.go, old: 'c.Storage.MaxIdleConns = 5', new: 'c.Storage.MaxIdleConns = 6'}
+  - {id: correct-07, group: correct, label: correct, file: internal/config/defaults.go, old: 'defaultDuration(&c.Admin.IdleTimeout, 30*time.Second)', new: 'defaultDuration(&c.Admin.IdleTimeout, 45*time.Second)'}
+  - {id: correct-08, group: correct, label: correct, file: internal/config/defaults.go, old: 'defaultDuration(&c.Public.WriteTimeout, 30*time.Second)', new: 'defaultDuration(&c.Public.WriteTimeout, 35*time.Second)'}
+  - {id: correct-09, group: correct, label: correct, file: internal/config/defaults.go, old: 'defaultDuration(&c.Public.ReadTimeout, 10*time.Second)', new: 'defaultDuration(&c.Public.ReadTimeout, 12*time.Second)'}
+  - {id: correct-10, group: correct, label: correct, file: internal/config/defaults.go, old: 'defaultDuration(&c.Admin.ReadTimeout, 5*time.Second)', new: 'defaultDuration(&c.Admin.ReadTimeout, 6*time.Second)'}
+  - {id: defect-01, group: seeded, label: defective, requirement: LIMIT-03, file: internal/gateway/runtime.go, old: 'http.StatusRequestEntityTooLarge', new: 'http.StatusBadGateway', replace_all: true}
+  - {id: defect-02, group: seeded, label: defective, requirement: TRUST-01, file: internal/gateway/runtime.go, old: 'r.Header.Del("X-Forwarded-For")', new: '// incoming forwarding chain retained'}
+  - {id: defect-03, group: seeded, label: defective, requirement: START-02, file: internal/cli/cli.go, old: 'exitCode = 1', new: 'exitCode = 0'}
+  - {id: defect-04, group: seeded, label: defective, requirement: ROUTE-01, file: internal/router/router.go, old: 'len(v.PathPrefix) > best', new: 'len(v.PathPrefix) >= 0'}
+  - {id: defect-05, group: seeded, label: defective, requirement: AUTH-02, file: internal/admin/handler.go, old: 'h.apiKey != "" && subtle.ConstantTimeCompare', new: 'h.apiKey == "" && subtle.ConstantTimeCompare'}
+  - {id: defect-06, group: seeded, label: defective, requirement: FAIL-03, file: internal/gateway/runtime.go, old: 'attempts = 1', new: 'attempts = 3', replace_all: true}
+  - {id: defect-07, group: seeded, label: defective, requirement: CONFIG-04, file: internal/control/service.go, old: 's.repository.Get(ctx, target)', new: 's.repository.Current(ctx)'}
+  - {id: defect-08, group: seeded, label: defective, requirement: HTTP-01, file: internal/gateway/proxy.go, old: 'out.URL.Host = target.Host', new: 'out.URL.Host = target.Host\n\tout.URL.RawQuery = ""'}
+  - {id: defect-09, group: seeded, label: defective, requirement: LIMIT-01, file: internal/ratelimit/limiter.go, old: 'item.tokens--', new: '// token consumption omitted'}
+  - {id: defect-10, group: seeded, label: defective, requirement: CONFIG-06, file: internal/control/service.go, old: 's.runtime.Publish(prepared, snapshot.Revision)', new: 's.runtime.Publish(prepared, snapshot.Revision-1)'}
+  - {id: ai-01, group: ai, label: pending_review}
+  - {id: ai-02, group: ai, label: pending_review}
+  - {id: ai-03, group: ai, label: pending_review}
+  - {id: ai-04, group: ai, label: pending_review}
+  - {id: ai-05, group: ai, label: pending_review}
+  - {id: ai-06, group: ai, label: pending_review}
+  - {id: ai-07, group: ai, label: pending_review}
+  - {id: ai-08, group: ai, label: pending_review}
+  - {id: ai-09, group: ai, label: pending_review}
+  - {id: ai-10, group: ai, label: pending_review}

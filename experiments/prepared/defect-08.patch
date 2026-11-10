@@ -1,0 +1,10 @@
+--- a/internal/gateway/proxy.go
++++ b/internal/gateway/proxy.go
+@@ -19,6 +19,7 @@
+ 	*out.URL = *in.URL
+ 	out.URL.Scheme = target.Scheme
+ 	out.URL.Host = target.Host
++\tout.URL.RawQuery = ""
+ 	out.URL.Path = joinPath(target.Path, in.URL.Path)
+ 	out.Host = target.Host
+ 	out.Header = in.Header.Clone()

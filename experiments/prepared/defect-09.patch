@@ -1,0 +1,11 @@
+--- a/internal/ratelimit/limiter.go
++++ b/internal/ratelimit/limiter.go
+@@ -77,7 +77,7 @@
+ 		l.mu.Unlock()
+ 		return Result{Allowed: false, Limit: capacity, Remaining: remaining, ResetAt: reset, Release: func() {}}
+ 	}
+-	item.tokens--
++	// token consumption omitted
+ 	if limit.MaxConcurrent > 0 {
+ 		item.inFlight++
+ 	}

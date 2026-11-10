@@ -1,0 +1,10 @@
+--- a/internal/admin/handler.go
++++ b/internal/admin/handler.go
+@@ -65,6 +65,7 @@
+ 	h.mux.ServeHTTP(w, r)
+ }
+ func (h *Handler) ready(w http.ResponseWriter, _ *http.Request) {
++	w.Header().Set("Cache-Control", "no-store")
+ 	if !h.runtime.Ready() {
+ 		write(w, http.StatusServiceUnavailable, map[string]string{"status": "not_ready"})
+ 		return

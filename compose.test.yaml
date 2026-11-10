@@ -1,0 +1,37 @@
+services:
+  gateforge:
+    image: ${GATEFORGE_TEST_IMAGE:?Supply an already built image}
+    platform: linux/amd64
+    environment:
+      GATEFORGE_ADMIN_API_KEY: test-admin-key
+      GATEFORGE_DATABASE_DSN: postgres://gateforge:test-password@postgres:5432/gateforge?sslmode=disable
+      TEST_API_KEY: test-client-key
+    volumes:
+      - ./tests/e2e/config.json:/configs/gateforge.json:ro
+    ports: ["127.0.0.1::8080", "127.0.0.1::9090"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+  backend-a:
+    image: ${TEST_BACKEND_IMAGE:-gateforge-test-backend:local}
+    environment: {NAME: backend-a}
+    ports: ["127.0.0.1::8080"]
+  backend-b:
+    image: ${TEST_BACKEND_IMAGE:-gateforge-test-backend:local}
+    environment: {NAME: backend-b}
+    ports: ["127.0.0.1::8080"]
+  postgres:
+    image: ${TEST_POSTGRES_IMAGE:-postgres:18-alpine@sha256:9a8afca54e7861fd90fab5fdf4c42477a6b1cb7d293595148e674e0a3181de15}
+    environment:
+      POSTGRES_USER: gateforge
+      POSTGRES_PASSWORD: test-password
+      POSTGRES_DB: gateforge
+      POSTGRES_INITDB_ARGS: --no-sync
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U gateforge -d gateforge"]
+      interval: 1s
+      timeout: 3s
+      retries: 180
+    volumes: ["database:/var/lib/postgresql"]
+volumes:
+  database:

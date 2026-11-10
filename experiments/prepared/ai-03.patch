@@ -1,0 +1,11 @@
+--- a/internal/gateway/proxy.go
++++ b/internal/gateway/proxy.go
+@@ -59,7 +59,7 @@
+ 	}
+ }
+ func removeHopHeaders(header http.Header) {
+-	if connection := header.Get("Connection"); connection != "" {
++	if connection := strings.Join(header.Values("Connection"), ","); connection != "" {
+ 		for _, key := range strings.Split(connection, ",") {
+ 			header.Del(strings.TrimSpace(key))
+ 		}

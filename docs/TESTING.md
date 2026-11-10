@@ -79,3 +79,25 @@ go run ./cmd/gateforge test -config configs/gateforge.json -cases configs/policy
 ## CI
 
 `ci.yml` запускает format, vet, unit-тесты с race detector и порогом покрытия 80%, сквозные и PostgreSQL integration tests, policy cases, fuzz smoke, build, golangci-lint и govulncheck. Отдельные workflows выполняют CodeQL и проверку container/SBOM.
+
+### Проверка готовой поставки
+
+Установите зависимости `python -m pip install -r tests/requirements.txt`.
+Соберите шлюз `docker build --target gateforge -t gateforge:local .` и fixture
+`docker build --target test-backend -t gateforge-test-backend:local .`.
+`make e2e-test` запускает отдельные PostgreSQL и backend, выполняет внешние проверки,
+сохраняет логи в `artifacts/` и удаляет ресурсы. Для Windows без make используйте
+`python scripts/e2e.py test`. Docker Desktop должен работать в режиме Linux containers.
+
+`python scripts/release_test.py --image gateforge:local` проверяет обновление и
+возврат с сохранением PostgreSQL. `python scripts/load_test.py --image gateforge:local`
+выполняет парные нагрузочные измерения. Не запускайте измерения одновременно со
+сборками или другим нагрузочным испытанием.
+
+PostgreSQL integration запускается явно: `make integration`, с обязательной
+переменной `GATEFORGE_TEST_DATABASE`. Отсутствие БД считается ошибкой.
+
+Итоговый `quality-gate` требует успешных static/unit/integration/fuzz/build/security/e2e,
+не менее 80% покрытия, отсутствия пропусков обязательных тестов и совпадения
+артефакта. Release workflow вызывает полный CI и публикует его образ без пересборки.
+Локальный успех отдельных тестов не заменяет полного отчёта допуска.

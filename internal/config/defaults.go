@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -180,13 +181,5 @@ func (c *Config) ExpandEnvironment() {
 }
 
 func itoa(value int) string {
-	if value < 10 {
-		return string(rune('0' + value))
-	}
-	result := ""
-	for value > 0 {
-		result = string(rune('0'+value%10)) + result
-		value /= 10
-	}
-	return result
+	return strconv.Itoa(value)
 }

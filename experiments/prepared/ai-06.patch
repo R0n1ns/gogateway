@@ -1,0 +1,13 @@
+--- a/internal/admin/handler.go
++++ b/internal/admin/handler.go
+@@ -281,7 +281,9 @@
+ }
+ 
+ func decode(w http.ResponseWriter, r *http.Request, target any, maxBytes int64) error {
+-	return json.NewDecoder(http.MaxBytesReader(w, r.Body, maxBytes)).Decode(target)
++	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxBytes))
++	decoder.DisallowUnknownFields()
++	return decoder.Decode(target)
+ }
+ func expectedRevision(r *http.Request, fallback int64) int64 {
+ 	value := strings.Trim(r.Header.Get("If-Match"), `"`)

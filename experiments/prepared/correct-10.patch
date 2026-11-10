@@ -1,0 +1,11 @@
+--- a/internal/config/defaults.go
++++ b/internal/config/defaults.go
+@@ -12,7 +12,7 @@
+ 	defaultDuration(&c.Public.ReadTimeout, 10*time.Second)
+ 	defaultDuration(&c.Public.WriteTimeout, 30*time.Second)
+ 	defaultDuration(&c.Public.IdleTimeout, time.Minute)
+-	defaultDuration(&c.Admin.ReadTimeout, 5*time.Second)
++	defaultDuration(&c.Admin.ReadTimeout, 6*time.Second)
+ 	defaultDuration(&c.Admin.WriteTimeout, 10*time.Second)
+ 	defaultDuration(&c.Admin.IdleTimeout, 30*time.Second)
+ 	defaultDuration(&c.Runtime.ShutdownTimeout, 10*time.Second)

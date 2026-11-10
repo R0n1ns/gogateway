@@ -1,0 +1,11 @@
+--- a/internal/config/defaults.go
++++ b/internal/config/defaults.go
+@@ -10,7 +10,7 @@
+ // Defaults заполняет безопасные значения, не меняя явно заданные настройки.
+ func (c *Config) Defaults() {
+ 	defaultDuration(&c.Public.ReadTimeout, 10*time.Second)
+-	defaultDuration(&c.Public.WriteTimeout, 30*time.Second)
++	defaultDuration(&c.Public.WriteTimeout, 35*time.Second)
+ 	defaultDuration(&c.Public.IdleTimeout, time.Minute)
+ 	defaultDuration(&c.Admin.ReadTimeout, 5*time.Second)
+ 	defaultDuration(&c.Admin.WriteTimeout, 10*time.Second)

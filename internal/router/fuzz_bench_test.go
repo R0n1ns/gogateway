@@ -1,7 +1,9 @@
 package router
 
 import (
+	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 
@@ -22,9 +24,23 @@ func FuzzRouteMatch(f *testing.F) {
 			return
 		}
 		matcher := New([]config.Route{{ID: "route", Host: strings.ToLower(host), PathPrefix: prefix}})
-		request := httptest.NewRequest("GET", "http://example.invalid"+path, nil)
-		request.Host = host
-		_, _ = matcher.Match(request)
+		request := &http.Request{Method: "GET", URL: &url.URL{Path: path}, Host: host}
+		got, ok := matcher.Match(request)
+		// Host is tested independently below; use a wildcard for arbitrary bytes.
+		wildcard := New([]config.Route{{ID: "wildcard", PathPrefix: prefix}})
+		_, matchesPath := wildcard.Match(request)
+		want := prefix == "/" || path == prefix || strings.HasPrefix(path, prefix+"/")
+		if matchesPath != want {
+			t.Fatalf("path=%q prefix=%q got=%v want=%v", path, prefix, matchesPath, want)
+		}
+		if ok && (got.ID != "route" || !matchesPath) {
+			t.Fatal("invalid route selection")
+		}
+		request.Host = "EXAMPLE.COM"
+		fixed := New([]config.Route{{ID: "fixed", Host: "example.com", PathPrefix: "/"}})
+		if _, matched := fixed.Match(request); !matched {
+			t.Fatal("host matching must ignore case")
+		}
 	})
 }
 func BenchmarkMatch1000Routes(b *testing.B) {

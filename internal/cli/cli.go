@@ -259,18 +259,21 @@ func runGateway(args []string, out, errOut io.Writer) int {
 	}()
 	signals := make(chan os.Signal, 1)
 	signal.Notify(signals, syscall.SIGINT, syscall.SIGTERM)
+	defer signal.Stop(signals)
+	exitCode := 0
 	select {
 	case <-signals:
 	case serveErr := <-errs:
 		if !errors.Is(serveErr, http.ErrServerClosed) {
 			logger.Error("server stopped", "error", serveErr)
+			exitCode = 1
 		}
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), activeConfig.Runtime.ShutdownTimeout.Duration)
 	defer cancel()
 	_ = public.Shutdown(ctx)
 	_ = controlServer.Shutdown(ctx)
-	return 0
+	return exitCode
 }
 func newServer(cfg config.Server, handler http.Handler) *http.Server {
 	return &http.Server{Addr: cfg.Address, Handler: handler, ReadTimeout: cfg.ReadTimeout.Duration, WriteTimeout: cfg.WriteTimeout.Duration, IdleTimeout: cfg.IdleTimeout.Duration, ReadHeaderTimeout: 5_000_000_000}

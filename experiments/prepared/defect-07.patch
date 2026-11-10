@@ -1,0 +1,11 @@
+--- a/internal/control/service.go
++++ b/internal/control/service.go
+@@ -53,7 +53,7 @@
+ 	return snapshot, nil
+ }
+ func (s *Service) Rollback(ctx context.Context, target, expected int64, actor string) (storage.Snapshot, error) {
+-	snapshot, err := s.repository.Get(ctx, target)
++	snapshot, err := s.repository.Current(ctx)
+ 	if err != nil {
+ 		return storage.Snapshot{}, err
+ 	}

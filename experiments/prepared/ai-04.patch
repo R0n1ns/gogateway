@@ -1,0 +1,11 @@
+--- a/internal/gateway/runtime.go
++++ b/internal/gateway/runtime.go
+@@ -382,7 +382,7 @@
+ 	}
+ }
+ func requestID() string {
+-	data := make([]byte, 12)
++	data := make([]byte, 16)
+ 	if _, err := rand.Read(data); err != nil {
+ 		return strconv.FormatInt(time.Now().UnixNano(), 36)
+ 	}

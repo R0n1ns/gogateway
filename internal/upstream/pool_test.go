@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -29,6 +30,38 @@ func TestWeightedRoundRobin(t *testing.T) {
 	}
 	if counts["a"] != 30 || counts["b"] != 10 {
 		t.Fatalf("weights=%v", counts)
+	}
+}
+
+func TestRejectInvalidWeightTotals(t *testing.T) {
+	maxInt := int(^uint(0) >> 1)
+	for _, weights := range [][]int{{0}, {-1}, {maxInt, 1}} {
+		items := make([]config.Upstream, len(weights))
+		for i, weight := range weights {
+			items[i] = config.Upstream{ID: "test", URL: "http://example.test", Weight: weight}
+		}
+		if pool, err := New(testRoute("weighted_round_robin", items)); err == nil {
+			pool.Close()
+			t.Fatalf("accepted invalid weights: %v", weights)
+		}
+	}
+}
+
+func TestRandomSelectionUsesOnlyConfiguredBackends(t *testing.T) {
+	pool, err := New(testRoute("random", []config.Upstream{{ID: "a", URL: "http://a", Weight: 1}, {ID: "b", URL: "http://b", Weight: 1}}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pool.Close()
+	for range 20 {
+		selection, err := pool.Select(httptest.NewRequest("GET", "/", nil))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if id := selection.Backend.ID(); id != "a" && id != "b" {
+			t.Fatalf("unexpected backend %q", id)
+		}
+		selection.Release()
 	}
 }
 
@@ -80,22 +113,34 @@ func TestCircuitBreakerOpens(t *testing.T) {
 }
 
 func TestActiveHealthCheck(t *testing.T) {
-	status := http.StatusServiceUnavailable
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(status) }))
+	var status atomic.Int64
+	status.Store(http.StatusServiceUnavailable)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(int(status.Load())) }))
 	defer server.Close()
 	route := testRoute("round_robin", []config.Upstream{{ID: "a", URL: server.URL, Weight: 1}})
-	route.HealthCheck = config.HealthCheck{Enabled: true, Path: "/health", Interval: config.Duration{Duration: time.Hour}, Timeout: config.Duration{Duration: time.Second}, HealthyThreshold: 1, UnhealthyThreshold: 1}
-	pool, _ := New(route)
+	route.HealthCheck = config.HealthCheck{Enabled: true, Path: "/health", Interval: config.Duration{Duration: 5 * time.Millisecond}, Timeout: config.Duration{Duration: time.Second}, HealthyThreshold: 1, UnhealthyThreshold: 1}
+	pool, err := New(route)
+	if err != nil {
+		t.Fatal(err)
+	}
 	defer pool.Close()
-	pool.check(t.Context(), pool.backends[0])
-	if pool.backends[0].Healthy() {
-		t.Fatal("unhealthy backend оставлен активным")
+	waitHealthy := func(want bool) {
+		t.Helper()
+		deadline := time.NewTimer(5 * time.Second)
+		defer deadline.Stop()
+		tick := time.NewTicker(time.Millisecond)
+		defer tick.Stop()
+		for pool.backends[0].Healthy() != want {
+			select {
+			case <-deadline.C:
+				t.Fatalf("backend healthy=%v, want %v", pool.backends[0].Healthy(), want)
+			case <-tick.C:
+			}
+		}
 	}
-	status = http.StatusOK
-	pool.check(t.Context(), pool.backends[0])
-	if !pool.backends[0].Healthy() {
-		t.Fatal("backend не восстановлен")
-	}
+	waitHealthy(false)
+	status.Store(http.StatusOK)
+	waitHealthy(true)
 }
 
 func testRoute(strategy string, backends []config.Upstream) config.Route {

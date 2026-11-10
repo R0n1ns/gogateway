@@ -3,9 +3,10 @@ package upstream
 
 import (
 	"context"
+	"crypto/rand"
 	"errors"
 	"hash/fnv"
-	"math/rand"
+	"math/big"
 	"net"
 	"net/http"
 	"net/url"
@@ -23,7 +24,7 @@ var ErrNoHealthyUpstream = errors.New("нет доступных upstream")
 type Backend struct {
 	id                 string
 	target             *url.URL
-	weight             int
+	weight             uint64
 	healthy            atomic.Bool
 	active             atomic.Int64
 	mu                 sync.Mutex
@@ -58,13 +59,11 @@ type Pool struct {
 	backends  []*Backend
 	transport *http.Transport
 	sequence  atomic.Uint64
-	randomMu  sync.Mutex
-	random    *rand.Rand
 	cancel    context.CancelFunc
 }
 
 func New(route config.Route) (*Pool, error) {
-	pool := &Pool{route: route, random: rand.New(rand.NewSource(time.Now().UnixNano()))}
+	pool := &Pool{route: route}
 	pool.transport = &http.Transport{
 		Proxy:                 http.ProxyFromEnvironment,
 		DialContext:           (&net.Dialer{Timeout: 5 * time.Second, KeepAlive: 30 * time.Second}).DialContext,
@@ -76,12 +75,21 @@ func New(route config.Route) (*Pool, error) {
 		ExpectContinueTimeout: time.Second,
 		ResponseHeaderTimeout: route.UpstreamTimeout.Duration,
 	}
+	var total uint64
 	for _, item := range route.UpstreamPool {
+		if item.Weight < 1 {
+			return nil, errors.New("upstream weight must be positive")
+		}
+		weight := uint64(item.Weight)
+		if weight > uint64(^uint(0)>>1)-total {
+			return nil, errors.New("upstream weight sum overflows int")
+		}
+		total += weight
 		target, err := url.Parse(item.URL)
 		if err != nil {
 			return nil, err
 		}
-		backend := &Backend{id: item.ID, target: target, weight: item.Weight}
+		backend := &Backend{id: item.ID, target: target, weight: weight}
 		backend.healthy.Store(true)
 		pool.backends = append(pool.backends, backend)
 	}
@@ -128,24 +136,26 @@ func (p *Pool) Select(r *http.Request) (*Selection, error) {
 			}
 		}
 	case "random":
-		p.randomMu.Lock()
-		selected = candidates[p.random.Intn(len(candidates))]
-		p.randomMu.Unlock()
+		index, err := rand.Int(rand.Reader, big.NewInt(int64(len(candidates))))
+		if err != nil {
+			return nil, err
+		}
+		selected = candidates[index.Int64()]
 	case "consistent_hash":
-		selected = candidates[int(hashValue(hashKey(r, p.route.Balance.HashKey))%uint64(len(candidates)))]
+		selected = candidates[hashValue(hashKey(r, p.route.Balance.HashKey))%uint64(len(candidates))]
 	default:
-		selected = candidates[int((p.sequence.Add(1)-1)%uint64(len(candidates)))]
+		selected = candidates[(p.sequence.Add(1)-1)%uint64(len(candidates))]
 	}
 	selected.active.Add(1)
 	return &Selection{Backend: selected}, nil
 }
 
 func (p *Pool) weighted(items []*Backend) *Backend {
-	total := 0
+	var total uint64
 	for _, item := range items {
 		total += item.weight
 	}
-	point := int((p.sequence.Add(1) - 1) % uint64(total))
+	point := (p.sequence.Add(1) - 1) % total
 	for _, item := range items {
 		if point < item.weight {
 			return item

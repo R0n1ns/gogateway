@@ -1,0 +1,15 @@
+--- a/internal/gateway/runtime.go
++++ b/internal/gateway/runtime.go
+@@ -291,10 +291,10 @@
+ func (g *Runtime) forward(w http.ResponseWriter, in *http.Request, route config.Route, pool *upstream.Pool, clientIP string) (int, string, error) {
+ 	attempts := route.Retry.Attempts
+ 	if attempts < 1 {
+-		attempts = 1
++		attempts = 3
+ 	}
+ 	if !slices.Contains(route.Retry.Methods, in.Method) && attempts > 1 {
+-		attempts = 1
++		attempts = 3
+ 	}
+ 	var body []byte
+ 	var err error

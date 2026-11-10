@@ -1,0 +1,11 @@
+--- a/internal/cli/cli.go
++++ b/internal/cli/cli.go
+@@ -266,7 +266,7 @@
+ 	case serveErr := <-errs:
+ 		if !errors.Is(serveErr, http.ErrServerClosed) {
+ 			logger.Error("server stopped", "error", serveErr)
+-			exitCode = 1
++			exitCode = 0
+ 		}
+ 	}
+ 	ctx, cancel := context.WithTimeout(context.Background(), activeConfig.Runtime.ShutdownTimeout.Duration)
