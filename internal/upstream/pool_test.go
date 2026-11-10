@@ -32,6 +32,38 @@ func TestWeightedRoundRobin(t *testing.T) {
 	}
 }
 
+func TestRejectInvalidWeightTotals(t *testing.T) {
+	maxInt := int(^uint(0) >> 1)
+	for _, weights := range [][]int{{0}, {-1}, {maxInt, 1}} {
+		items := make([]config.Upstream, len(weights))
+		for i, weight := range weights {
+			items[i] = config.Upstream{ID: "test", URL: "http://example.test", Weight: weight}
+		}
+		if pool, err := New(testRoute("weighted_round_robin", items)); err == nil {
+			pool.Close()
+			t.Fatalf("accepted invalid weights: %v", weights)
+		}
+	}
+}
+
+func TestRandomSelectionUsesOnlyConfiguredBackends(t *testing.T) {
+	pool, err := New(testRoute("random", []config.Upstream{{ID: "a", URL: "http://a", Weight: 1}, {ID: "b", URL: "http://b", Weight: 1}}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pool.Close()
+	for range 20 {
+		selection, err := pool.Select(httptest.NewRequest("GET", "/", nil))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if id := selection.Backend.ID(); id != "a" && id != "b" {
+			t.Fatalf("unexpected backend %q", id)
+		}
+		selection.Release()
+	}
+}
+
 func TestLeastConnections(t *testing.T) {
 	route := testRoute("least_connections", []config.Upstream{{ID: "a", URL: "http://a", Weight: 1}, {ID: "b", URL: "http://b", Weight: 1}})
 	pool, _ := New(route)

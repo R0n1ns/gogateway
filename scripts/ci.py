@@ -65,6 +65,7 @@ class Stage:
             stream = files.enter_context((self.path / log).open("w", encoding="utf-8"))
             stderr = files.enter_context((self.path / (log+".stderr.log")).open("w", encoding="utf-8")) if separate_stderr else subprocess.STDOUT
             result = subprocess.run(args, cwd=ROOT, stdout=stream, stderr=stderr, timeout=timeout)
+        self.last_returncode = result.returncode
         if result.returncode not in allowed:
             raise RuntimeError(f"{log}: command exited {result.returncode}")
         return (self.path / log).read_text(encoding="utf-8", errors="replace")
@@ -139,19 +140,27 @@ class Stage:
         self.report.update(blocking_findings=0, scanners_complete=False)
         vulnerability_output = self.run(["govulncheck", "./..."], "govulncheck.log", allowed=(0, 3))
         reachable = re.search(r"Your code is affected by (\d+) vulnerabilit", vulnerability_output)
+        if self.last_returncode == 3 and not reachable:
+            raise RuntimeError("govulncheck reported vulnerabilities but its summary could not be parsed")
         self.report["blocking_findings"] += int(reachable.group(1)) if reachable else 0
-        self.run(["gosec", "-fmt=json", "-out=" + str(self.path / "gosec.json"), "-severity=high", "./..."], "gosec.log", allowed=(0, 1))
+        self.report["blocking_by_scanner"] = {"govulncheck": self.report["blocking_findings"]}
+        self.run(["gosec", "-concurrency=2", "-fmt=json", "-out=" + str(self.path / "gosec.json"), "-severity=high", "./..."], "gosec.log", allowed=(0, 1))
         source = json.loads((self.path / "gosec.json").read_text(encoding="utf-8"))
         if source.get("Golang errors"): raise RuntimeError("gosec analysis errors")
+        if self.last_returncode == 1 and not source.get("Issues"):
+            raise RuntimeError("gosec failed without a usable findings report")
         self.report["blocking_findings"] += len(source.get("Issues") or [])
+        self.report["blocking_by_scanner"]["gosec"] = len(source.get("Issues") or [])
         self.run(["docker", "run", "--rm", "-v", str(ARTIFACTS / "build") + ":/scan:ro",
                   "anchore/grype:v0.120.1", "docker-archive:/scan/image.tar", "-o", "json"], "grype.json", timeout=900, separate_stderr=True)
         scan = json.loads((self.path / "grype.json").read_text(encoding="utf-8"))
         matches = scan["matches"]
         self.report["findings"] = [{"id": m["vulnerability"]["id"], "severity": m["vulnerability"]["severity"],
                                     "fix": m["vulnerability"].get("fix", {}), "package": m["artifact"]["name"]} for m in matches]
-        self.report["blocking_findings"] += sum(m["severity"].lower() in ("high", "critical") and bool(m["fix"].get("versions")) for m in self.report["findings"])
-        self.report["scanners_complete"] = True
+        image_blockers = sum(m["severity"].lower() in ("high", "critical") and bool(m["fix"].get("versions")) for m in self.report["findings"])
+        self.report["blocking_findings"] += image_blockers
+        self.report["blocking_by_scanner"]["grype"] = image_blockers
+        codeql_blockers = 0
         if os.getenv("CODEQL_REQUIRED") == "1":
             paths = list((self.path / "codeql").glob("*.sarif"))
             if not paths: raise RuntimeError("CodeQL report absent")
@@ -163,7 +172,11 @@ class Stage:
                         severity = float(rule.get("properties", {}).get("security-severity", "0"))
                         if finding.get("level") == "error" or severity >= 7:
                             self.report["blocking_findings"] += 1
-        if self.report["blocking_findings"]: raise RuntimeError("security policy violated")
+                            codeql_blockers += 1
+            self.report["blocking_by_scanner"]["codeql"] = codeql_blockers
+        self.report["scanners_complete"] = True
+        if self.report["blocking_findings"]:
+            raise RuntimeError("security policy violated: " + json.dumps(self.report["blocking_by_scanner"]) + "; see security artifact logs and JSON reports")
 
     def e2e(self):
         manifest = self.artifact()

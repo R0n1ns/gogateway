@@ -3,9 +3,10 @@ package upstream
 
 import (
 	"context"
+	"crypto/rand"
 	"errors"
 	"hash/fnv"
-	"math/rand"
+	"math/big"
 	"net"
 	"net/http"
 	"net/url"
@@ -58,13 +59,18 @@ type Pool struct {
 	backends  []*Backend
 	transport *http.Transport
 	sequence  atomic.Uint64
-	randomMu  sync.Mutex
-	random    *rand.Rand
 	cancel    context.CancelFunc
 }
 
 func New(route config.Route) (*Pool, error) {
-	pool := &Pool{route: route, random: rand.New(rand.NewSource(time.Now().UnixNano()))}
+	pool := &Pool{route: route}
+	var total uint64
+	for _, item := range route.UpstreamPool {
+		if item.Weight < 1 || uint64(item.Weight) > uint64(^uint(0)>>1)-total {
+			return nil, errors.New("upstream weights must be positive and their sum must fit in int")
+		}
+		total += uint64(item.Weight)
+	}
 	pool.transport = &http.Transport{
 		Proxy:                 http.ProxyFromEnvironment,
 		DialContext:           (&net.Dialer{Timeout: 5 * time.Second, KeepAlive: 30 * time.Second}).DialContext,
@@ -128,13 +134,15 @@ func (p *Pool) Select(r *http.Request) (*Selection, error) {
 			}
 		}
 	case "random":
-		p.randomMu.Lock()
-		selected = candidates[p.random.Intn(len(candidates))]
-		p.randomMu.Unlock()
+		index, err := rand.Int(rand.Reader, big.NewInt(int64(len(candidates))))
+		if err != nil {
+			return nil, err
+		}
+		selected = candidates[index.Int64()]
 	case "consistent_hash":
-		selected = candidates[int(hashValue(hashKey(r, p.route.Balance.HashKey))%uint64(len(candidates)))]
+		selected = candidates[hashValue(hashKey(r, p.route.Balance.HashKey))%uint64(len(candidates))]
 	default:
-		selected = candidates[int((p.sequence.Add(1)-1)%uint64(len(candidates)))]
+		selected = candidates[(p.sequence.Add(1)-1)%uint64(len(candidates))]
 	}
 	selected.active.Add(1)
 	return &Selection{Backend: selected}, nil
@@ -145,12 +153,12 @@ func (p *Pool) weighted(items []*Backend) *Backend {
 	for _, item := range items {
 		total += item.weight
 	}
-	point := int((p.sequence.Add(1) - 1) % uint64(total))
+	point := (p.sequence.Add(1) - 1) % uint64(total)
 	for _, item := range items {
-		if point < item.weight {
+		if point < uint64(item.weight) {
 			return item
 		}
-		point -= item.weight
+		point -= uint64(item.weight)
 	}
 	return items[0]
 }

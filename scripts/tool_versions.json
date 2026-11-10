@@ -1,5 +1,5 @@
 {
-  "go": "1.26.9",
+  "go": "1.26.10",
   "python": "3.12.12",
   "golangci_lint": "v2.14.0",
   "govulncheck": "v1.1.4",
