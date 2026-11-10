@@ -67,8 +67,33 @@ class Stage:
             result = subprocess.run(args, cwd=ROOT, stdout=stream, stderr=stderr, timeout=timeout)
         self.last_returncode = result.returncode
         if result.returncode not in allowed:
+            self.print_failure_log(self.path / log)
+            if separate_stderr:
+                self.print_failure_log(self.path / (log + ".stderr.log"))
             raise RuntimeError(f"{log}: command exited {result.returncode}")
         return (self.path / log).read_text(encoding="utf-8", errors="replace")
+
+    def print_failure_log(self, path):
+        lines = []
+        failures = []
+        for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+            try:
+                event = json.loads(line)
+            except ValueError:
+                lines.append(line)
+                continue
+            if isinstance(event, dict) and "Action" in event:
+                if event["Action"] == "fail":
+                    failures.append(f"FAILED {event.get('Package', '')} {event.get('Test', '')}".rstrip())
+                if event.get("Output"):
+                    lines.extend(event["Output"].splitlines())
+            else:
+                lines.append(line)
+        # Keep complete output in the artifact, with a bounded diagnostic in CI.
+        print(f"--- {path.name} (last 200 output lines) ---", file=sys.stderr)
+        print("\n".join(lines[-200:]), file=sys.stderr)
+        if failures:
+            print("\n".join(failures), file=sys.stderr)
 
     def artifact(self):
         manifest = json.loads((ARTIFACTS / "build/manifest.json").read_text(encoding="utf-8"))
